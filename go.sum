@@ -1,5 +1,3 @@
-github.com/arnodel/grammar v0.0.0-20210720075619-955365e6f04c h1:nQE4mb31zWzMTe63baRXWZ8OsM7xjdn+f6G0bXvYH0c=
-github.com/arnodel/grammar v0.0.0-20210720075619-955365e6f04c/go.mod h1:AGts2EYJ2mFxv69ntiJGTJBZrW+SxyvCsSRwihu8h0E=
 github.com/mattn/go-runewidth v0.0.3 h1:a+kO+98RDGEfo6asOGMmpodZq4FNtnGP54yps8BzLR4=
 github.com/mattn/go-runewidth v0.0.3/go.mod h1:LwmH8dsx7+W8Uxz3IHJYH5QSwggIsqBzpuz5H//U1FU=
 github.com/peterh/liner v1.2.1 h1:O4BlKaq/LWu6VRWmol4ByWfzx6MfXc5Op5HETyIy5yg=
