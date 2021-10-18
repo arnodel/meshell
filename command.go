@@ -12,8 +12,9 @@ type Command interface {
 	StdoutPipe() (io.ReadCloser, error)
 	Start(*Shell) error
 	Wait() error
-	Output() ([]byte, error)
+	Output(*Shell) ([]byte, error)
 	String() string
+	ExitCode() int
 }
 
 type ExecCmd struct {
@@ -32,6 +33,14 @@ func (c *ExecCmd) Start(sh *Shell) error {
 
 func (c *ExecCmd) SetStdout(w io.Writer) {
 	c.Cmd.Stdout = w
+}
+
+func (c *ExecCmd) Output(sh *Shell) ([]byte, error) {
+	return c.Cmd.Output()
+}
+
+func (c *ExecCmd) ExitCode() int {
+	return c.ProcessState.ExitCode()
 }
 
 //
@@ -68,9 +77,20 @@ func (p *CommandPipe) Wait() error {
 	return AggregateErrors(p.right.Wait(), p.left.Wait())
 }
 
-func (p *CommandPipe) Output() ([]byte, error) {
-	out, err := p.right.Output()
+func (p *CommandPipe) ExitCode() int {
+	return p.right.ExitCode()
+}
+
+func (p *CommandPipe) Output(sh *Shell) ([]byte, error) {
+	// log.Print("X")
+	err := p.left.Start(sh)
+	if err != nil {
+		return nil, err
+	}
+	out, err := p.right.Output(sh)
+	// log.Print("Y")
 	err = AggregateErrors(err, p.left.Wait())
+	// log.Print("Z")
 	return out, err
 }
 
@@ -82,12 +102,31 @@ func (p *CommandPipe) String() string {
 // CommandSeq
 //
 
+type SeqType uint8
+
+const (
+	UncondSeq SeqType = iota
+	AndSeq
+	OrSeq
+)
+
 type CommandSeq struct {
 	first, second Command
 	errCh         chan error
+	seqType       SeqType
+	exitCode      int
 }
 
 var _ Command = &CommandSeq{}
+
+func NewCommandSeq(first, second Command, tp SeqType) *CommandSeq {
+	return &CommandSeq{
+		first:   first,
+		second:  second,
+		seqType: tp,
+		errCh:   make(chan error),
+	}
+}
 
 func (s *CommandSeq) SetStdout(w io.Writer) {
 	s.first.SetStdout(w)
@@ -110,12 +149,26 @@ func (s *CommandSeq) Start(sh *Shell) error {
 	}
 	go func() {
 		err := s.first.Wait()
-		if err == nil {
+		exitCode := s.first.ExitCode()
+		var shouldStartSecond bool
+		switch s.seqType {
+		case UncondSeq:
+			shouldStartSecond = true
+		case AndSeq:
+			shouldStartSecond = exitCode == 0
+		case OrSeq:
+			shouldStartSecond = exitCode != 0
+		default:
+			panic("bug!")
+		}
+		if shouldStartSecond {
 			err = s.second.Start(sh)
+			if err == nil {
+				err = s.second.Wait()
+				exitCode = s.second.ExitCode()
+			}
 		}
-		if err == nil {
-			err = s.second.Wait()
-		}
+		s.exitCode = exitCode
 		s.errCh <- err
 	}()
 	return nil
@@ -126,12 +179,12 @@ func (s *CommandSeq) Wait() error {
 	// TODO: close the pipe?
 }
 
-func (s *CommandSeq) Output() ([]byte, error) {
-	out, err := s.first.Output()
+func (s *CommandSeq) Output(sh *Shell) ([]byte, error) {
+	out, err := s.first.Output(sh)
 	if err != nil {
 		return nil, err
 	}
-	out2, err := s.second.Output()
+	out2, err := s.second.Output(sh)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +194,61 @@ func (s *CommandSeq) Output() ([]byte, error) {
 func (s *CommandSeq) String() string {
 	return fmt.Sprintf("%s; %s", s.first, s.second)
 }
+
+func (s *CommandSeq) ExitCode() int {
+	return s.exitCode
+}
+
+//
+// AsyncCmd
+//
+
+type AsyncCmd struct {
+	cmd Command
+}
+
+var _ Command = &AsyncCmd{}
+
+func (c *AsyncCmd) SetStdout(w io.Writer) {
+	c.cmd.SetStdout(w)
+}
+
+func (c *AsyncCmd) StdoutPipe() (io.ReadCloser, error) {
+	return c.cmd.StdoutPipe()
+}
+
+func (c *AsyncCmd) Start(sh *Shell) error {
+	err := c.cmd.Start(sh)
+	if err != nil {
+		return err
+	}
+	job := sh.StartJob(c)
+	go func() {
+		c.cmd.Wait()
+		sh.StopJob(job)
+	}()
+	return nil
+}
+
+func (c *AsyncCmd) Wait() error {
+	return nil
+}
+
+func (c *AsyncCmd) Output(sh *Shell) ([]byte, error) {
+	return nil, nil
+}
+
+func (c *AsyncCmd) String() string {
+	return fmt.Sprintf("%s &", c.cmd)
+}
+
+func (c *AsyncCmd) ExitCode() int {
+	return 0
+}
+
+//
+//
+//
 
 type Builtin interface {
 	StartBuiltin(sh *Shell) error
@@ -166,12 +274,16 @@ func (b *UnimplementedCommand) Wait() error {
 	return nil
 }
 
-func (b *UnimplementedCommand) Output() ([]byte, error) {
+func (b *UnimplementedCommand) Output(sh *Shell) ([]byte, error) {
 	return nil, nil
 }
 
 func (b *UnimplementedCommand) String() string {
 	return "unimplemented command"
+}
+
+func (b *UnimplementedCommand) ExitCode() int {
+	return 0
 }
 
 type Assign struct {
@@ -204,6 +316,24 @@ func NewCd(dir string) *Cd {
 
 func (c *Cd) Start(sh *Shell) error {
 	return sh.SetCwd(c.dir)
+}
+
+type Exit struct {
+	UnimplementedCommand
+	code int
+}
+
+func NewExit(code int) *Exit {
+	return &Exit{code: code}
+}
+
+func (c *Exit) Start(sh *Shell) error {
+	sh.Exit(c.code)
+	return nil
+}
+
+func (c *Exit) ExitCode() int {
+	return c.code
 }
 
 type AggregateError struct {

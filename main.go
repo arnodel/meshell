@@ -1,58 +1,98 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/arnodel/grammar"
+	"github.com/peterh/liner"
 )
 
 func main() {
+	linr := liner.NewLiner()
+	defer linr.Close()
+	linr.SetCtrlCAborts(true)
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
-	shell := NewGosh(cwd)
-	reader := bufio.NewReader(os.Stdin)
+	shell := NewShell(cwd)
+	go func() {
+		code := shell.Wait()
+		linr.Close()
+		os.Exit(code)
+	}()
+outerLoop:
 	for {
 		cwd, _ = os.Getwd()
-		fmt.Printf("%s$ ", cwd)
-		line, err := reader.ReadString('\n')
+		line, err := linr.Prompt(fmt.Sprintf("%s$ ", cwd))
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			panic(err)
-		}
-		tokenStream, _ := tokeniseCommand(line)
-		var parsedLine Line
-		parseErr := grammar.Parse(&parsedLine, tokenStream)
-		if parseErr != nil {
-			panic(err)
-		}
-		// grammar.PrettyWrite(os.Stdout, parsedLine)
-		err = parsedLine.Exec(shell)
-		if err != nil {
 			fmt.Println(err)
+			continue
+		}
+		for {
+			line = line + "\n"
+			tokenStream, err := tokeniseCommand(line)
+			if err != nil {
+				fmt.Println(err)
+				continue outerLoop
+			}
+			var parsedLine Line
+			parseErr := grammar.Parse(&parsedLine, tokenStream)
+			// tokenStream.Dump(os.Stdout)
+			if parseErr == nil {
+				if parsedLine.CmdList == nil {
+					continue outerLoop
+				}
+				cmd, err := parsedLine.CmdList.GetCommand(shell, os.Stdin)
+				if err == nil {
+					cmd.SetStdout(os.Stdout)
+					err = shell.StartCommand(cmd)
+				}
+				if err == nil {
+					err = shell.WaitForCommand(cmd)
+				}
+				if err != nil {
+					fmt.Println(err)
+				}
+				continue outerLoop
+			} else if parseErr.Token == grammar.EOF {
+				more, err := linr.Prompt("> ")
+				if err == io.EOF {
+					return
+				} else if err != nil {
+					panic(err)
+				}
+				line = line + more
+			} else {
+				fmt.Println(parseErr)
+				continue outerLoop
+			}
 		}
 	}
 }
 
 type Shell struct {
-	cwd  string
-	vars map[string]string
+	cwd    string
+	vars   map[string]string
+	exitCh chan int
 }
 
-func NewGosh(cwd string) *Shell {
+func NewShell(cwd string) *Shell {
 	return &Shell{
-		cwd:  cwd,
-		vars: map[string]string{},
+		cwd:    cwd,
+		vars:   map[string]string{},
+		exitCh: make(chan int),
 	}
 }
 
@@ -77,12 +117,26 @@ func (s *Shell) GetCwd() (string, error) {
 }
 
 func (s *Shell) StartCommand(c Command) error {
-	// log.Print(c)
 	return c.Start(s)
 }
 
 func (s *Shell) WaitForCommand(c Command) error {
 	return c.Wait()
+}
+
+func (s *Shell) Exit(code int) {
+	s.exitCh <- code
+}
+
+func (s *Shell) Wait() int {
+	return <-s.exitCh
+}
+
+func (s *Shell) StartJob(c Command) int {
+	return 0
+}
+
+func (s *Shell) StopJob(job int) {
 }
 
 type Token = grammar.SimpleToken
@@ -121,8 +175,20 @@ func getStringToken(s string) string {
 
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
-		Ptn: `\s+`,
+		Ptn: `[ \t]+`,
 	},
+	{
+		Ptn: `\\\n`,
+	},
+	{
+		Name: "logical",
+		Ptn:  `&&|\|\|`,
+	},
+	{
+		Ptn:  `[;&\n]\s*`,
+		Name: "term",
+	},
+
 	{
 		Name: "envvar",
 		Ptn:  `\$[a-zA-Z_][a-zA-Z0-9_-]*`,
@@ -136,8 +202,16 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Ptn:  `\$\(`,
 	},
 	{
-		Name: "op",
-		Ptn:  `[&()|;]`,
+		Name: "pipe",
+		Ptn:  `\|\s*`,
+	},
+	{
+		Name: "closebkt",
+		Ptn:  `\)`,
+	},
+	{
+		Name: "redirect",
+		Ptn:  `>>|>|<<|<`,
 	},
 	{
 		Name:    "string",
@@ -150,88 +224,168 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Name: "literal",
-		Ptn:  `[^\s();&$]+`,
+		Ptn:  `[^\s();&\$|]+`,
 	},
 })
 
 type Line struct {
 	grammar.Seq
-	Stmts []Stmt
-	Amp   *Token `tok:"op,&"`
+	CmdList *CmdList
+	EOF     Token `tok:"EOF"`
 }
 
-func (l *Line) Exec(sh *Shell) error {
-	for i, stmt := range l.Stmts {
-		if err := stmt.Exec(sh, l.Amp != nil && i == len(l.Stmts)-1); err != nil {
-			return err
-		}
+type CmdList struct {
+	grammar.Seq
+	First CmdListItem
+	Rest  []CmdListItem
+}
+
+func (c *CmdList) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+	cmdSeq, err := c.First.GetCommand(sh, stdin)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	for _, item := range c.Rest {
+		cmd, err := item.GetCommand(sh, stdin)
+		if err != nil {
+			return nil, err
+		}
+		cmdSeq = NewCommandSeq(cmdSeq, cmd, UncondSeq)
+	}
+	return cmdSeq, nil
 }
 
-type Stmt struct {
-	grammar.OneOf
-	Cmd         *PipedCmd
-	Assignments *AssignmentList
+type CmdListItem struct {
+	grammar.Seq
+	Cmd CmdLogical
+	Op  Token `tok:"term"`
 }
 
-func (s *Stmt) Exec(sh *Shell, bgnd bool) error {
-	var cmd Command
-	var err error
-	switch {
-	case s.Cmd != nil:
-		cmd, err = s.Cmd.GetCommand(sh, os.Stdin)
-		if err != nil {
-			return err
-		}
-	case s.Assignments != nil:
-		assignCmd := new(Assign)
-		key, val, err := s.Assignments.First.KeyValue(sh)
-		if err != nil {
-			return err
-		}
-		assignCmd.Add(key, val)
-		for _, a := range s.Assignments.Rest {
-			key, val, err = a.KeyValue(sh)
-			if err != nil {
-				return err
-			}
-			assignCmd.Add(key, val)
-		}
-		cmd = assignCmd
+func (c *CmdListItem) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+	cmd, err := c.Cmd.GetCommand(sh, stdin)
+	if err != nil {
+		return nil, err
+	}
+	switch c.Op.Value()[0] {
+	case '&':
+		cmd = &AsyncCmd{cmd: cmd}
+	case '\n', ';':
+		// Nothing to do
 	default:
 		panic("bug!")
 	}
-	cmd.SetStdout(os.Stdout)
-	sh.StartCommand(cmd)
-	if bgnd {
-		go sh.WaitForCommand(cmd)
-		return nil
-	} else {
-		return sh.WaitForCommand(cmd)
-	}
+	return cmd, nil
 }
 
-type Cmd struct {
+type CmdLogical struct {
 	grammar.Seq
-	Assignments []Assignment
-	CmdName     Value
-	Parts       []Value
+	First Pipeline
+	Rest  []NextPipeline
 }
 
-func (c *Cmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
-	cmdName, err := c.CmdName.Eval(sh)
+func (c *CmdLogical) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+	cmdSeq, err := c.First.GetCommand(sh, stdin)
 	if err != nil {
 		return nil, err
+	}
+	for _, next := range c.Rest {
+		cmd, err := next.Cmd.GetCommand(sh, stdin)
+		if err != nil {
+			return nil, err
+		}
+		var op SeqType
+		switch next.Op.Value() {
+		case "||":
+			op = OrSeq
+		case "&&":
+			op = AndSeq
+		default:
+			panic("bug!")
+		}
+		cmdSeq = NewCommandSeq(cmdSeq, cmd, op)
+	}
+	return cmdSeq, nil
+}
+
+type NextPipeline struct {
+	grammar.Seq
+	Op  Token `tok:"logical"`
+	Cmd Pipeline
+}
+
+type SimpleCmd struct {
+	grammar.Seq
+	Assignments []Assignment
+	Parts       []CmdPart `size:"1-"`
+}
+
+func (c *SimpleCmd) sortParts() ([]*Value, []*Redirect) {
+	var vals []*Value
+	var redirects []*Redirect
+	for _, part := range c.Parts {
+		switch {
+		case part.Value != nil:
+			vals = append(vals, part.Value)
+		case part.Redirect != nil:
+			redirects = append(redirects, part.Redirect)
+		default:
+			panic("bug!")
+		}
+	}
+	return vals, redirects
+}
+
+type CmdPart struct {
+	grammar.OneOf
+	Value    *Value
+	Redirect *Redirect
+}
+
+type Redirect struct {
+	grammar.Seq
+	Op   Token `tok:"redirect"`
+	File Value
+}
+
+func (c *SimpleCmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+	args, redirects := c.sortParts()
+	// TODO: deal with redirects
+	_ = redirects
+	if len(args) == 0 {
+		assignCmd := new(Assign)
+
+		for _, a := range c.Assignments {
+			key, val, err := a.KeyValue(sh)
+			if err != nil {
+				return nil, err
+			}
+			assignCmd.Add(key, val)
+		}
+		return assignCmd, nil
+	}
+	evaledArgs := make([]string, 0, len(args))
+	var err error
+	for _, arg := range args {
+		vals, err := arg.Eval(sh)
+		if err != nil {
+			return nil, err
+		}
+		evaledArgs = append(evaledArgs, vals...)
+
+	}
+	cmdName := evaledArgs[0]
+	if err != nil {
+		return nil, err
+
 	}
 	switch cmdName {
 	case "cd":
 		dir := ""
-		switch len(c.Parts) {
-		case 0:
-			dir, err = os.UserHomeDir()
+		switch len(args) {
 		case 1:
-			dir, err = c.Parts[0].Eval(sh)
+			dir, err = os.UserHomeDir()
+		case 2:
+			dir = evaledArgs[1]
 		default:
 			err = errors.New("cd: wrong number of arguments")
 		}
@@ -239,16 +393,24 @@ func (c *Cmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 			return nil, err
 		}
 		return NewCd(dir), nil
-	}
-	args := make([]string, len(c.Parts))
-	for i, p := range c.Parts {
-		arg, err := p.Eval(sh)
-		if err != nil {
-			return nil, err
+	case "exit":
+		var code int64
+		switch len(args) {
+		case 1:
+			// default exit code
+		case 2:
+			codeStr := evaledArgs[1]
+			code, err = strconv.ParseInt(codeStr, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, errors.New("exit: wrong number of arguments")
 		}
-		args[i] = arg
+		return NewExit(int(code)), nil
 	}
-	cmd := exec.Command(cmdName, args...)
+
+	cmd := exec.Command(cmdName, evaledArgs[1:]...)
 	wd, err := sh.GetCwd()
 	if err != nil {
 		return nil, err
@@ -259,11 +421,11 @@ func (c *Cmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 	if len(c.Assignments) > 0 {
 		env := os.Environ()
 		for _, a := range c.Assignments {
-			val, err := a.Value.Eval(sh)
+			vals, err := a.Value.Eval(sh)
 			if err != nil {
 				return nil, err
 			}
-			env = append(env, a.Dest.Value()+val)
+			env = append(env, a.Dest.Value()+strings.Join(vals, " "))
 		}
 		cmd.Env = env
 	}
@@ -284,21 +446,20 @@ type Assignment struct {
 
 func (a *Assignment) KeyValue(sh *Shell) (string, string, error) {
 	key := strings.TrimSuffix(a.Dest.Value(), "=")
-	value, err := a.Value.Eval(sh)
+	values, err := a.Value.Eval(sh)
 	if err != nil {
 		return "", "", err
 	}
-	return key, value, nil
+	return key, strings.Join(values, " "), nil
 }
 
-type PipedCmd struct {
+type Pipeline struct {
 	grammar.Seq
-	FirstCmd Cmd
-	Pipes    []Pipe
-	End      *Token `tok:"op,;"`
+	FirstCmd SimpleCmd
+	Pipes    []PipedCmd
 }
 
-func (c *PipedCmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+func (c *Pipeline) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 	cmd, err := c.FirstCmd.GetCommand(sh, stdin)
 	if err != nil {
 		return nil, err
@@ -317,10 +478,10 @@ func (c *PipedCmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 	return cmd, nil
 }
 
-type Pipe struct {
+type PipedCmd struct {
 	grammar.Seq
-	Pipe Token `tok:"op,|"`
-	Cmd  Cmd
+	Pipe Token `tok:"pipe"`
+	Cmd  SimpleCmd
 }
 
 type Value struct {
@@ -332,27 +493,43 @@ type Value struct {
 	DollarStmt *DollarStmt
 }
 
-func (v *Value) Eval(sh *Shell) (string, error) {
+func (v *Value) Eval(sh *Shell) ([]string, error) {
 	switch {
 	case v.Literal != nil:
-		return v.Literal.Value(), nil
+		val := v.Literal.Value()
+		exp, err := filepath.Glob(val)
+		if err != nil {
+			return nil, err
+		}
+		if exp == nil {
+			return []string{val}, nil
+		}
+		return exp, nil
 	case v.DollarStmt != nil:
-		return v.DollarStmt.Eval(sh)
+		s, err := v.DollarStmt.Eval(sh)
+		if err != nil {
+			return nil, err
+		}
+		return []string{s}, err
 	case v.EnvVar != nil:
-		return sh.GetVar(v.EnvVar.Value()[1:]), nil
+		return []string{sh.GetVar(v.EnvVar.Value()[1:])}, nil
 	case v.String != nil:
 		tokStream, err := tokeniseString(v.String.Value())
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		var str String
 		parseErr := grammar.Parse(&str, tokStream)
 		if parseErr != nil {
-			return "", err
+			return nil, err
 		}
-		return str.Eval(sh)
+		s, err := str.Eval(sh)
+		if err != nil {
+			return nil, err
+		}
+		return []string{s}, nil
 	case v.Quote != nil:
-		return strings.Trim(v.Quote.Value(), "'"), nil
+		return []string{strings.Trim(v.Quote.Value(), "'")}, nil
 	default:
 		panic("bug!")
 	}
@@ -361,16 +538,16 @@ func (v *Value) Eval(sh *Shell) (string, error) {
 type DollarStmt struct {
 	grammar.Seq
 	Open  Token `tok:"dollarbkt"`
-	Stmt  Stmt
-	Close Token `tok:"op,)"`
+	Cmds  CmdList
+	Close Token `tok:"closebkt"`
 }
 
 func (s *DollarStmt) Eval(sh *Shell) (string, error) {
-	cmd, err := s.Stmt.Cmd.GetCommand(sh, os.Stdin)
+	cmd, err := s.Cmds.GetCommand(sh, os.Stdin)
 	if err != nil {
 		return "", err
 	}
-	b, err := cmd.Output()
+	b, err := cmd.Output(sh)
 	if err != nil {
 		return "", err
 	}
@@ -395,10 +572,6 @@ var tokeniseString = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Name: "dollarbkt",
 		Ptn:  `\$\(`,
-	},
-	{
-		Name: "op",
-		Ptn:  `[)]`,
 	},
 	{
 		Name: "lit",
