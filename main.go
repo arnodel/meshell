@@ -35,6 +35,7 @@ outerLoop:
 		cwd, _ = os.Getwd()
 		line, err := linr.Prompt(fmt.Sprintf("%s$ ", cwd))
 		if err == io.EOF {
+			fmt.Fprintln(os.Stdout, "\nBye!")
 			return
 		} else if err != nil {
 			fmt.Println(err)
@@ -47,9 +48,9 @@ outerLoop:
 				fmt.Println(err)
 				continue outerLoop
 			}
+			tokenStream.Dump(os.Stdout)
 			var parsedLine Line
 			parseErr := grammar.Parse(&parsedLine, tokenStream)
-			// tokenStream.Dump(os.Stdout)
 			if parseErr == nil {
 				if parsedLine.CmdList == nil {
 					continue outerLoop
@@ -80,63 +81,6 @@ outerLoop:
 			}
 		}
 	}
-}
-
-type Shell struct {
-	cwd    string
-	vars   map[string]string
-	exitCh chan int
-}
-
-func NewShell(cwd string) *Shell {
-	return &Shell{
-		cwd:    cwd,
-		vars:   map[string]string{},
-		exitCh: make(chan int),
-	}
-}
-
-func (s *Shell) GetVar(name string) string {
-	val, ok := s.vars[name]
-	if ok {
-		return val
-	}
-	return os.Getenv(name)
-}
-
-func (s *Shell) SetVar(name, val string) {
-	s.vars[name] = val
-}
-
-func (s *Shell) SetCwd(dir string) error {
-	return os.Chdir(dir)
-}
-
-func (s *Shell) GetCwd() (string, error) {
-	return os.Getwd()
-}
-
-func (s *Shell) StartCommand(c Command) error {
-	return c.Start(s)
-}
-
-func (s *Shell) WaitForCommand(c Command) error {
-	return c.Wait()
-}
-
-func (s *Shell) Exit(code int) {
-	s.exitCh <- code
-}
-
-func (s *Shell) Wait() int {
-	return <-s.exitCh
-}
-
-func (s *Shell) StartJob(c Command) int {
-	return 0
-}
-
-func (s *Shell) StopJob(job int) {
 }
 
 type Token = grammar.SimpleToken
@@ -175,58 +119,99 @@ func getStringToken(s string) string {
 
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
-		Ptn: `[ \t]+`,
+		Mode: "cmd",
+		Ptn:  `[ \t]+`,
 	},
 	{
-		Ptn: `\\\n`,
+		Mode: "cmd",
+		Ptn:  `\\\n`,
 	},
 	{
+		Mode: "cmd",
 		Name: "logical",
 		Ptn:  `&&|\|\|`,
 	},
 	{
+		Mode: "cmd",
 		Ptn:  `[;&\n]\s*`,
 		Name: "term",
 	},
 
 	{
+		Mode: "cmd",
 		Name: "envvar",
 		Ptn:  `\$[a-zA-Z_][a-zA-Z0-9_-]*`,
 	},
 	{
+		Mode: "cmd",
 		Name: "assign",
 		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*=`,
 	},
 	{
-		Name: "dollarbkt",
-		Ptn:  `\$\(`,
+		Mode:     "cmd",
+		Name:     "dollarbkt",
+		Ptn:      `\$\(`,
+		PushMode: "cmd",
 	},
 	{
+		Mode: "cmd",
 		Name: "pipe",
 		Ptn:  `\|\s*`,
 	},
 	{
-		Name: "closebkt",
-		Ptn:  `\)`,
+		Mode:    "cmd",
+		Name:    "closebkt",
+		Ptn:     `\)`,
+		PopMode: true,
 	},
 	{
+		Mode: "cmd",
 		Name: "redirect",
 		Ptn:  `>>|>|<<|<`,
 	},
 	{
-		Name:    "string",
-		Ptn:     `".`,
-		Special: getStringToken,
+		Mode:     "cmd",
+		Name:     "startquote",
+		Ptn:      `"`,
+		PushMode: "str",
 	},
 	{
-		Name: "quote",
+		Mode: "cmd",
+		Name: "litstr",
 		Ptn:  `'[^']*'`,
 	},
 	{
+		Mode: "cmd",
 		Name: "literal",
 		Ptn:  `[^\s();&\$|]+`,
 	},
-})
+	{
+		Mode:    "str",
+		Name:    "endquote",
+		Ptn:     `"`,
+		PopMode: true,
+	},
+	{
+		Mode: "str",
+		Name: "escaped",
+		Ptn:  `\.`,
+	},
+	{
+		Mode: "str",
+		Name: "envvar",
+		Ptn:  `\$[a-zA-Z_][a-zA-Z0-9_-]*`,
+	},
+	{
+		Mode:     "str",
+		Name:     "dollarbkt",
+		Ptn:      `\$\(`,
+		PushMode: "cmd",
+	},
+	{
+		Mode: "str",
+		Name: "lit",
+		Ptn:  `[^\\$"]+`,
+	}})
 
 type Line struct {
 	grammar.Seq
@@ -487,8 +472,8 @@ type PipedCmd struct {
 type Value struct {
 	grammar.OneOf
 	Literal    *Token `tok:"literal"`
-	String     *Token `tok:"string"`
-	Quote      *Token `tok:"quote"`
+	String     *String
+	Quote      *Token `tok:"litstr"`
 	EnvVar     *Token `tok:"envvar"`
 	DollarStmt *DollarStmt
 }
@@ -510,20 +495,11 @@ func (v *Value) Eval(sh *Shell) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []string{s}, err
+		return []string{s}, nil
 	case v.EnvVar != nil:
 		return []string{sh.GetVar(v.EnvVar.Value()[1:])}, nil
 	case v.String != nil:
-		tokStream, err := tokeniseString(v.String.Value())
-		if err != nil {
-			return nil, err
-		}
-		var str String
-		parseErr := grammar.Parse(&str, tokStream)
-		if parseErr != nil {
-			return nil, err
-		}
-		s, err := str.Eval(sh)
+		s, err := v.String.Eval(sh)
 		if err != nil {
 			return nil, err
 		}
@@ -555,35 +531,11 @@ func (s *DollarStmt) Eval(sh *Shell) (string, error) {
 	return string(b), err
 }
 
-// Strings
-var tokeniseString = grammar.SimpleTokeniser([]grammar.TokenDef{
-	{
-		Name: "quote",
-		Ptn:  `"`,
-	},
-	{
-		Name: "escaped",
-		Ptn:  `\.`,
-	},
-	{
-		Name: "envvar",
-		Ptn:  `\$[a-zA-Z_][a-zA-Z0-9_-]*`,
-	},
-	{
-		Name: "dollarbkt",
-		Ptn:  `\$\(`,
-	},
-	{
-		Name: "lit",
-		Ptn:  `[^\\$"]+`,
-	},
-})
-
 type String struct {
 	grammar.Seq
-	Open   *Token `tok:"quote"`
+	Open   Token `tok:"startquote"`
 	Chunks []StringChunk
-	Close  *Token `tok:"quote"`
+	Close  Token `tok:"endquote"`
 }
 
 func (s *String) Eval(sh *Shell) (string, error) {
