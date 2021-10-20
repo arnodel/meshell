@@ -48,10 +48,11 @@ outerLoop:
 				fmt.Println(err)
 				continue outerLoop
 			}
-			tokenStream.Dump(os.Stdout)
 			var parsedLine Line
 			parseErr := grammar.Parse(&parsedLine, tokenStream)
+			// tokenStream.Dump(os.Stdout)
 			if parseErr == nil {
+				linr.AppendHistory(strings.TrimSpace(line))
 				if parsedLine.CmdList == nil {
 					continue outerLoop
 				}
@@ -86,36 +87,6 @@ outerLoop:
 type Token = grammar.SimpleToken
 
 // Commands
-func getStringToken(s string) string {
-	last := s[0]
-	depth := 0
-	if last != '"' {
-		return ""
-	}
-	for i := 1; i < len(s); i++ {
-		switch last {
-		case '\\':
-			last = 0
-			continue
-		case '$':
-			if s[i] == '(' {
-				last = 0
-				depth++
-				continue
-			}
-		}
-		switch s[i] {
-		case '"':
-			if depth == 0 {
-				return s[:i+1]
-			}
-		case ')':
-			depth--
-		}
-		last = s[i]
-	}
-	return ""
-}
 
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
@@ -129,7 +100,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
 		Name: "logical",
-		Ptn:  `&&|\|\|`,
+		Ptn:  `(?:&&|\|\|)\s*`,
 	},
 	{
 		Mode: "cmd",
@@ -150,7 +121,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode:     "cmd",
 		Name:     "dollarbkt",
-		Ptn:      `\$\(`,
+		Ptn:      `\$\(\s*`,
 		PushMode: "cmd",
 	},
 	{
@@ -204,7 +175,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode:     "str",
 		Name:     "dollarbkt",
-		Ptn:      `\$\(`,
+		Ptn:      `\$\(\s*`,
 		PushMode: "cmd",
 	},
 	{
@@ -243,13 +214,16 @@ func (c *CmdList) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 type CmdListItem struct {
 	grammar.Seq
 	Cmd CmdLogical
-	Op  Token `tok:"term"`
+	Op  *Token `tok:"term"`
 }
 
 func (c *CmdListItem) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
 	cmd, err := c.Cmd.GetCommand(sh, stdin)
 	if err != nil {
 		return nil, err
+	}
+	if c.Op == nil {
+		return cmd, err
 	}
 	switch c.Op.Value()[0] {
 	case '&':
@@ -279,7 +253,7 @@ func (c *CmdLogical) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error)
 			return nil, err
 		}
 		var op SeqType
-		switch next.Op.Value() {
+		switch next.Op.Value()[:2] {
 		case "||":
 			op = OrSeq
 		case "&&":
@@ -301,7 +275,7 @@ type NextPipeline struct {
 type SimpleCmd struct {
 	grammar.Seq
 	Assignments []Assignment
-	Parts       []CmdPart `size:"1-"`
+	Parts       []CmdPart
 }
 
 func (c *SimpleCmd) sortParts() ([]*Value, []*Redirect) {
