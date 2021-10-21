@@ -59,6 +59,16 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Ptn:  `>>|>|<<|<`,
 	},
 	{
+		Mode: "cmd",
+		Name: "openbrace",
+		Ptn:  `{\s*`,
+	},
+	{
+		Mode: "cmd",
+		Name: "closebrace",
+		Ptn:  `\}`,
+	},
+	{
 		Mode:     "cmd",
 		Name:     "startquote",
 		Ptn:      `"`,
@@ -72,7 +82,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
 		Name: "literal",
-		Ptn:  `[^\s();&\$|]+`,
+		Ptn:  `[^\s();&\$|}]+`,
 	},
 	{
 		Mode:    "str",

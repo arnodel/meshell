@@ -103,6 +103,34 @@ type NextPipeline struct {
 	Cmd Pipeline
 }
 
+type PipelineItem struct {
+	grammar.OneOf
+	Simple *SimpleCmd
+	Group  *CmdGroup
+}
+
+func (i *PipelineItem) GetCommand() (CommandDef, error) {
+	switch {
+	case i.Simple != nil:
+		return i.Simple.GetCommand()
+	case i.Group != nil:
+		return i.Group.GetCommand()
+	default:
+		panic("bug!")
+	}
+}
+
+type CmdGroup struct {
+	grammar.Seq
+	Open  Token `tok:"openbrace"`
+	Cmds  CmdList
+	Close Token `tok:"closebrace"`
+}
+
+func (g *CmdGroup) GetCommand() (CommandDef, error) {
+	return g.Cmds.GetCommand()
+}
+
 type SimpleCmd struct {
 	grammar.Seq
 	Assignments []Assignment
@@ -180,7 +208,7 @@ type Assignment struct {
 
 type Pipeline struct {
 	grammar.Seq
-	FirstCmd SimpleCmd
+	FirstCmd PipelineItem
 	Pipes    []PipedCmd
 }
 
@@ -202,7 +230,7 @@ func (c *Pipeline) GetCommand() (CommandDef, error) {
 type PipedCmd struct {
 	grammar.Seq
 	Pipe Token `tok:"pipe"`
-	Cmd  SimpleCmd
+	Cmd  PipelineItem
 }
 
 type Value struct {
