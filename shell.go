@@ -37,7 +37,7 @@ func (s *Shell) GetCwd() (string, error) {
 }
 
 func (s *Shell) StartCommand(c Command) error {
-	return c.Start(s)
+	return c.Start()
 }
 
 func (s *Shell) WaitForCommand(c Command) error {

@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -56,9 +52,16 @@ outerLoop:
 				if parsedLine.CmdList == nil {
 					continue outerLoop
 				}
-				cmd, err := parsedLine.CmdList.GetCommand(shell, os.Stdin)
+				cmdDef, err := parsedLine.CmdList.GetCommand()
+				var cmd Command
 				if err == nil {
-					cmd.SetStdout(os.Stdout)
+					cmd, err = cmdDef.Command(shell, StdStreams{
+						In:  os.Stdin,
+						Out: os.Stdout,
+						Err: os.Stderr,
+					})
+				}
+				if err == nil {
 					err = shell.StartCommand(cmd)
 				}
 				if err == nil {
@@ -196,17 +199,21 @@ type CmdList struct {
 	Rest  []CmdListItem
 }
 
-func (c *CmdList) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
-	cmdSeq, err := c.First.GetCommand(sh, stdin)
+func (c *CmdList) GetCommand() (CommandDef, error) {
+	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range c.Rest {
-		cmd, err := item.GetCommand(sh, stdin)
+		cmd, err := item.GetCommand()
 		if err != nil {
 			return nil, err
 		}
-		cmdSeq = NewCommandSeq(cmdSeq, cmd, UncondSeq)
+		cmdSeq = SeqCmdDef{
+			Left:    cmdSeq,
+			Right:   cmd,
+			SeqType: UncondSeq,
+		}
 	}
 	return cmdSeq, nil
 }
@@ -217,8 +224,8 @@ type CmdListItem struct {
 	Op  *Token `tok:"term"`
 }
 
-func (c *CmdListItem) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
-	cmd, err := c.Cmd.GetCommand(sh, stdin)
+func (c *CmdListItem) GetCommand() (CommandDef, error) {
+	cmd, err := c.Cmd.GetCommand()
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +234,7 @@ func (c *CmdListItem) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error
 	}
 	switch c.Op.Value()[0] {
 	case '&':
-		cmd = &AsyncCmd{cmd: cmd}
+		cmd = BackgroundCmdDef{Cmd: cmd}
 	case '\n', ';':
 		// Nothing to do
 	default:
@@ -242,13 +249,13 @@ type CmdLogical struct {
 	Rest  []NextPipeline
 }
 
-func (c *CmdLogical) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
-	cmdSeq, err := c.First.GetCommand(sh, stdin)
+func (c *CmdLogical) GetCommand() (CommandDef, error) {
+	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
 	}
 	for _, next := range c.Rest {
-		cmd, err := next.Cmd.GetCommand(sh, stdin)
+		cmd, err := next.Cmd.GetCommand()
 		if err != nil {
 			return nil, err
 		}
@@ -261,7 +268,11 @@ func (c *CmdLogical) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error)
 		default:
 			panic("bug!")
 		}
-		cmdSeq = NewCommandSeq(cmdSeq, cmd, op)
+		cmdSeq = SeqCmdDef{
+			Left:    cmdSeq,
+			Right:   cmd,
+			SeqType: op,
+		}
 	}
 	return cmdSeq, nil
 }
@@ -306,89 +317,33 @@ type Redirect struct {
 	File Value
 }
 
-func (c *SimpleCmd) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
+func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 	args, redirects := c.sortParts()
 	// TODO: deal with redirects
 	_ = redirects
-	if len(args) == 0 {
-		assignCmd := new(Assign)
-
-		for _, a := range c.Assignments {
-			key, val, err := a.KeyValue(sh)
-			if err != nil {
-				return nil, err
-			}
-			assignCmd.Add(key, val)
-		}
-		return assignCmd, nil
-	}
-	evaledArgs := make([]string, 0, len(args))
-	var err error
-	for _, arg := range args {
-		vals, err := arg.Eval(sh)
+	parts := make([]ValueDef, len(args))
+	for i, arg := range args {
+		val, err := arg.Eval()
 		if err != nil {
 			return nil, err
 		}
-		evaledArgs = append(evaledArgs, vals...)
-
+		parts[i] = val
 	}
-	cmdName := evaledArgs[0]
-	if err != nil {
-		return nil, err
-
-	}
-	switch cmdName {
-	case "cd":
-		dir := ""
-		switch len(args) {
-		case 1:
-			dir, err = os.UserHomeDir()
-		case 2:
-			dir = evaledArgs[1]
-		default:
-			err = errors.New("cd: wrong number of arguments")
-		}
+	env := make([]VarDef, len(c.Assignments))
+	for i, a := range c.Assignments {
+		val, err := a.Value.Eval()
 		if err != nil {
 			return nil, err
 		}
-		return NewCd(dir), nil
-	case "exit":
-		var code int64
-		switch len(args) {
-		case 1:
-			// default exit code
-		case 2:
-			codeStr := evaledArgs[1]
-			code, err = strconv.ParseInt(codeStr, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-		default:
-			return nil, errors.New("exit: wrong number of arguments")
+		env[i] = VarDef{
+			Name: getAssignDest(a.Dest.Value()),
+			Val:  val,
 		}
-		return NewExit(int(code)), nil
 	}
-
-	cmd := exec.Command(cmdName, evaledArgs[1:]...)
-	wd, err := sh.GetCwd()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Dir = wd
-	cmd.Stdin = stdin
-
-	if len(c.Assignments) > 0 {
-		env := os.Environ()
-		for _, a := range c.Assignments {
-			vals, err := a.Value.Eval(sh)
-			if err != nil {
-				return nil, err
-			}
-			env = append(env, a.Dest.Value()+strings.Join(vals, " "))
-		}
-		cmd.Env = env
-	}
-	return NewExecCmd(cmd), nil
+	return &ExecCmdDef{
+		Parts: parts,
+		Env:   env,
+	}, nil
 }
 
 type AssignmentList struct {
@@ -403,36 +358,23 @@ type Assignment struct {
 	Value Value
 }
 
-func (a *Assignment) KeyValue(sh *Shell) (string, string, error) {
-	key := strings.TrimSuffix(a.Dest.Value(), "=")
-	values, err := a.Value.Eval(sh)
-	if err != nil {
-		return "", "", err
-	}
-	return key, strings.Join(values, " "), nil
-}
-
 type Pipeline struct {
 	grammar.Seq
 	FirstCmd SimpleCmd
 	Pipes    []PipedCmd
 }
 
-func (c *Pipeline) GetCommand(sh *Shell, stdin io.ReadCloser) (Command, error) {
-	cmd, err := c.FirstCmd.GetCommand(sh, stdin)
+func (c *Pipeline) GetCommand() (CommandDef, error) {
+	cmd, err := c.FirstCmd.GetCommand()
 	if err != nil {
 		return nil, err
 	}
 	for _, pipe := range c.Pipes {
-		r, err := cmd.StdoutPipe()
+		right, err := pipe.Cmd.GetCommand()
 		if err != nil {
 			return nil, err
 		}
-		right, err := pipe.Cmd.GetCommand(sh, r)
-		if err != nil {
-			return nil, err
-		}
-		cmd = NewCommandPipe(cmd, right)
+		cmd = &PipelineCmdDef{Left: cmd, Right: right}
 	}
 	return cmd, nil
 }
@@ -452,34 +394,24 @@ type Value struct {
 	DollarStmt *DollarStmt
 }
 
-func (v *Value) Eval(sh *Shell) ([]string, error) {
+func (v *Value) Eval() (ValueDef, error) {
 	switch {
 	case v.Literal != nil:
-		val := v.Literal.Value()
-		exp, err := filepath.Glob(val)
-		if err != nil {
-			return nil, err
-		}
-		if exp == nil {
-			return []string{val}, nil
-		}
-		return exp, nil
+		return LiteralValueDef{
+			Val:    v.Literal.Value(),
+			Expand: true,
+		}, nil
 	case v.DollarStmt != nil:
-		s, err := v.DollarStmt.Eval(sh)
-		if err != nil {
-			return nil, err
-		}
-		return []string{s}, nil
+		return v.DollarStmt.Eval()
 	case v.EnvVar != nil:
-		return []string{sh.GetVar(v.EnvVar.Value()[1:])}, nil
+		return VarValueDef{Name: v.EnvVar.Value()[1:]}, nil
 	case v.String != nil:
-		s, err := v.String.Eval(sh)
-		if err != nil {
-			return nil, err
-		}
-		return []string{s}, nil
+		return v.String.Eval()
 	case v.Quote != nil:
-		return []string{strings.Trim(v.Quote.Value(), "'")}, nil
+		return LiteralValueDef{
+			Val:    strings.Trim(v.Quote.Value(), "'"),
+			Expand: false,
+		}, nil
 	default:
 		panic("bug!")
 	}
@@ -492,17 +424,12 @@ type DollarStmt struct {
 	Close Token `tok:"closebkt"`
 }
 
-func (s *DollarStmt) Eval(sh *Shell) (string, error) {
-	cmd, err := s.Cmds.GetCommand(sh, os.Stdin)
+func (s *DollarStmt) Eval() (ValueDef, error) {
+	cmd, err := s.Cmds.GetCommand()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	b, err := cmd.Output(sh)
-	if err != nil {
-		return "", err
-	}
-	b = bytes.TrimSuffix(b, []byte("\n"))
-	return string(b), err
+	return CommandValueDef{Cmd: cmd}, nil
 }
 
 type String struct {
@@ -512,31 +439,16 @@ type String struct {
 	Close  Token `tok:"endquote"`
 }
 
-func (s *String) Eval(sh *Shell) (string, error) {
-	var b strings.Builder
-	for _, chunk := range s.Chunks {
-		switch {
-		case chunk.Lit != nil:
-			b.WriteString(chunk.Lit.Value())
-		case chunk.DollarStmt != nil:
-			val, err := chunk.DollarStmt.Eval(sh)
-			if err != nil {
-				return "", err
-			}
-			b.WriteString(val)
-		case chunk.EnvVar != nil:
-			b.WriteString(sh.GetVar(chunk.EnvVar.Value()[1:]))
-		case chunk.Escaped != nil:
-			r, _, _, err := strconv.UnquoteChar(chunk.Escaped.Value(), '"')
-			if err != nil {
-				return "", err
-			}
-			b.WriteRune(r)
-		default:
-			panic("bug!")
+func (s *String) Eval() (ValueDef, error) {
+	parts := make([]ValueDef, len(s.Chunks))
+	var err error
+	for i, chunk := range s.Chunks {
+		parts[i], err = chunk.Eval()
+		if err != nil {
+			return nil, err
 		}
 	}
-	return b.String(), nil
+	return CompositeValueDef{Parts: parts}, nil
 }
 
 type StringChunk struct {
@@ -545,4 +457,27 @@ type StringChunk struct {
 	DollarStmt *DollarStmt
 	EnvVar     *Token `tok:"envvar"`
 	Escaped    *Token `tok:"escaped"`
+}
+
+func (c *StringChunk) Eval() (ValueDef, error) {
+	switch {
+	case c.Lit != nil:
+		return LiteralValueDef{Val: c.Lit.Value()}, nil
+	case c.DollarStmt != nil:
+		return c.DollarStmt.Eval()
+	case c.EnvVar != nil:
+		return VarValueDef{Name: c.EnvVar.Value()[1:]}, nil
+	case c.Escaped != nil:
+		r, _, _, err := strconv.UnquoteChar(c.Escaped.Value(), '"')
+		if err != nil {
+			return nil, err
+		}
+		return LiteralValueDef{Val: string(r)}, nil
+	default:
+		panic("bug!")
+	}
+}
+
+func getAssignDest(s string) string {
+	return s[:len(s)-1]
 }
