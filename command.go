@@ -158,14 +158,12 @@ func (d *PipelineCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 		right: right,
 		pipeR: r,
 		pipeW: w,
-		errCh: make(chan error),
 	}, nil
 }
 
 type PipelineCmd struct {
 	left, right  Command
 	pipeR, pipeW *os.File
-	errCh        chan error
 }
 
 var _ Command = &PipelineCmd{}
@@ -175,16 +173,16 @@ func (p *PipelineCmd) Start() error {
 	if err == nil {
 		err = p.right.Start()
 	}
+	p.pipeW.Close()
 	return err
 }
 
 func (p *PipelineCmd) Wait() error {
-	go func() {
-		defer p.pipeW.Close()
-		p.errCh <- p.left.Wait()
-	}()
-	defer p.pipeR.Close()
-	return AggregateErrors(<-p.errCh, p.right.Wait())
+	err := p.right.Wait()
+	p.pipeR.Close()
+	err2 := p.left.Wait()
+	_ = err2 // TODO: handle this error (ala bash set -o pipefail)
+	return err
 }
 
 func (p *PipelineCmd) ExitCode() int {
@@ -272,7 +270,6 @@ func (s *SeqCmd) Start() error {
 
 func (s *SeqCmd) Wait() error {
 	return <-s.errCh
-	// TODO: close the pipe?
 }
 
 func (s *SeqCmd) String() string {
