@@ -9,6 +9,8 @@ Not sure you want to do that :) Anyway:
 `go install github.com/arnodel/meshell`
 
 ## Features
+- [x] `cd` builtin
+- [x] `exit` builtin
 - [x] simple commands (`ls -a`)
 - [x] pipelines (`ls | grep foo`)
 - [x] and, or liests (`touch foo || echo ouch`)
@@ -22,4 +24,8 @@ Not sure you want to do that :) Anyway:
 - [ ] general parameter expansion (`echo ${PATH}`) - that's a rabbit hole
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
+- [ ] functions
+- [ ] if then else
+- [ ] while loops
+- [ ] for loops
 - add more to the list
