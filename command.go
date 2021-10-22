@@ -140,10 +140,11 @@ const (
 )
 
 type RedirectCmdDef struct {
-	FD          int
-	Replacement ValueDef
-	Mode        int
-	Cmd         CommandDef
+	FD          int        // File descriptor to redirect
+	Replacement ValueDef   // Replacement (file name or fd)
+	Mode        int        // Mode to open file in
+	Cmd         CommandDef // Command to run
+	Ref         bool       // True if expecting an fd
 }
 
 func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
@@ -152,18 +153,35 @@ func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 		return nil, err
 	}
 	var f *os.File
-	switch d.Mode {
-	case RM_Read:
-		f, err = os.Open(repl)
-	case RM_Truncate:
-		f, err = os.Create(repl)
-	case RM_Append:
-		f, err = os.OpenFile(repl, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	case RM_ReadWrite:
-		f, err = os.OpenFile(repl, os.O_CREATE|os.O_APPEND, 0666)
-	}
-	if err != nil {
-		return nil, err
+	if d.Ref {
+		var ok bool
+		switch repl {
+		case "0":
+			f, ok = std.In.(*os.File)
+		case "1":
+			f, ok = std.Out.(*os.File)
+		case "2":
+			f, ok = std.Err.(*os.File)
+		default:
+			return nil, errors.New("fd must be 0, 1, 2 for now")
+		}
+		if !ok {
+			return nil, fmt.Errorf("fd%s is not a file", repl)
+		}
+	} else {
+		switch d.Mode {
+		case RM_Read:
+			f, err = os.Open(repl)
+		case RM_Truncate:
+			f, err = os.Create(repl)
+		case RM_Append:
+			f, err = os.OpenFile(repl, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		case RM_ReadWrite:
+			f, err = os.OpenFile(repl, os.O_CREATE|os.O_APPEND, 0666)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	switch d.FD {
 	case 0: // stdin
@@ -176,6 +194,10 @@ func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	cmd, err := d.Cmd.Command(sh, std)
 	if err != nil {
 		return nil, err
+	}
+	if d.Ref {
+		// We don't want to close the file
+		return cmd, nil
 	}
 	return &RedirectCmd{
 		Command: cmd,

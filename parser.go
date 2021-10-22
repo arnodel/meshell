@@ -198,12 +198,18 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		var fd, mode int
-		switch r.Op.Value() {
+		op, fd, ref := splitRedirect(r.Op.Value())
+		var mode int
+		switch op {
 		case ">":
-			fd = 1
+			if fd == -1 {
+				fd = 1
+			}
 			mode = RM_Truncate
 		case ">>":
+			if fd == -1 {
+				fd = 1
+			}
 			fd = 1
 			mode = RM_Append
 		case "<":
@@ -217,6 +223,7 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 			Replacement: repl,
 			FD:          fd,
 			Mode:        mode,
+			Ref:         ref,
 		}
 	}
 	return cmd, nil
@@ -356,4 +363,18 @@ func (c *StringChunk) Eval() (ValueDef, error) {
 
 func getAssignDest(s string) string {
 	return s[:len(s)-1]
+}
+
+func splitRedirect(op string) (string, int, bool) {
+	origFd := -1
+	if op[0] >= '0' && op[0] <= '9' {
+		origFd = int(op[0] - '0')
+		op = op[1:]
+	}
+	l := len(op) - 1
+	ref := op[l] == '&'
+	if ref {
+		op = op[:l]
+	}
+	return op, origFd, ref
 }
