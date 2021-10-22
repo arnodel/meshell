@@ -74,6 +74,9 @@ func (d *ExecCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	cmdName := parts[0]
 	args := parts[1:]
 	var err error
+	if f := builtins[cmdName]; f != nil {
+		return f(sh, std, args)
+	}
 	switch cmdName {
 	case "cd":
 		dir := ""
