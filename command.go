@@ -26,6 +26,10 @@ type Command interface {
 	ExitCode() int
 }
 
+//
+// Simple Command
+//
+
 type ExecCmdDef struct {
 	Parts []ValueDef
 	Env   []VarDef
@@ -128,8 +132,71 @@ func (c *ExecCmd) ExitCode() int {
 	return c.ProcessState.ExitCode()
 }
 
+const (
+	RM_Read int = iota
+	RM_Truncate
+	RM_Append
+	RM_ReadWrite
+)
+
+type RedirectCmdDef struct {
+	FD          int
+	Replacement ValueDef
+	Mode        int
+	Cmd         CommandDef
+}
+
+func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+	repl, err := d.Replacement.Value(sh, std)
+	if err != nil {
+		return nil, err
+	}
+	var f *os.File
+	switch d.Mode {
+	case RM_Read:
+		f, err = os.Open(repl)
+	case RM_Truncate:
+		f, err = os.Create(repl)
+	case RM_Append:
+		f, err = os.OpenFile(repl, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	case RM_ReadWrite:
+		f, err = os.OpenFile(repl, os.O_CREATE|os.O_APPEND, 0666)
+	}
+	if err != nil {
+		return nil, err
+	}
+	switch d.FD {
+	case 0: // stdin
+		std.In = f
+	case 1:
+		std.Out = f
+	case 2:
+		std.Err = f
+	}
+	cmd, err := d.Cmd.Command(sh, std)
+	if err != nil {
+		return nil, err
+	}
+	return &RedirectCmd{
+		Command: cmd,
+		file:    f,
+	}, nil
+}
+
+type RedirectCmd struct {
+	Command
+	file *os.File
+}
+
+var _ Command = (*RedirectCmd)(nil)
+
+func (c *RedirectCmd) Wait() error {
+	defer c.file.Close()
+	return c.Command.Wait()
+}
+
 //
-// Command Pipe
+// Command Pipeline
 //
 
 type PipelineCmdDef struct {
@@ -194,7 +261,7 @@ func (p *PipelineCmd) String() string {
 }
 
 //
-// CommandSeq
+// Command List
 //
 
 type SeqType uint8
@@ -281,7 +348,7 @@ func (s *SeqCmd) ExitCode() int {
 }
 
 //
-// BackgroundCmd
+// Background COmmand
 //
 
 type BackgroundCmdDef struct {
@@ -328,7 +395,7 @@ func (c *BackgroundCmd) ExitCode() int {
 }
 
 //
-//
+// Bultins
 //
 
 type Builtin interface {

@@ -188,10 +188,38 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 			Val:  val,
 		}
 	}
-	return &ExecCmdDef{
+	var cmd CommandDef = &ExecCmdDef{
 		Parts: parts,
 		Env:   env,
-	}, nil
+	}
+	for i := len(redirects) - 1; i >= 0; i-- {
+		r := redirects[i]
+		repl, err := r.File.Eval()
+		if err != nil {
+			return nil, err
+		}
+		var fd, mode int
+		switch r.Op.Value() {
+		case ">":
+			fd = 1
+			mode = RM_Truncate
+		case ">>":
+			fd = 1
+			mode = RM_Append
+		case "<":
+			fd = 0
+			mode = RM_Read
+		default:
+			panic("bug!")
+		}
+		cmd = &RedirectCmdDef{
+			Cmd:         cmd,
+			Replacement: repl,
+			FD:          fd,
+			Mode:        mode,
+		}
+	}
+	return cmd, nil
 }
 
 type AssignmentList struct {
