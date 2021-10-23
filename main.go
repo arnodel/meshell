@@ -15,11 +15,7 @@ func main() {
 	defer linr.Close()
 	linr.SetCtrlCAborts(true)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	shell := NewShell(cwd)
+	shell := NewShell()
 	go func() {
 		code := shell.Wait()
 		linr.Close()
@@ -27,7 +23,7 @@ func main() {
 	}()
 outerLoop:
 	for {
-		cwd, _ = os.Getwd()
+		cwd, _ := shell.GetCwd()
 		line, err := linr.Prompt(fmt.Sprintf("%s$ ", cwd))
 		if err == io.EOF {
 			fmt.Fprintln(os.Stdout, "\nBye!")

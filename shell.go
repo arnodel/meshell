@@ -3,14 +3,12 @@ package main
 import "os"
 
 type Shell struct {
-	cwd    string
 	vars   map[string]string
 	exitCh chan int
 }
 
-func NewShell(cwd string) *Shell {
+func NewShell() *Shell {
 	return &Shell{
-		cwd:    cwd,
 		vars:   map[string]string{},
 		exitCh: make(chan int),
 	}

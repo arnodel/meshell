@@ -4,8 +4,6 @@ import "github.com/arnodel/grammar"
 
 type Token = grammar.SimpleToken
 
-// Commands
-
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
