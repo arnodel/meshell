@@ -41,7 +41,7 @@ func (c *CmdList) GetCommand() (CommandDef, error) {
 type CmdListItem struct {
 	grammar.Seq
 	Cmd CmdLogical
-	Op  *Token `tok:"term"`
+	Op  Token `tok:"term|closebrace*"`
 }
 
 func (c *CmdListItem) GetCommand() (CommandDef, error) {
@@ -49,13 +49,10 @@ func (c *CmdListItem) GetCommand() (CommandDef, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Op == nil {
-		return cmd, err
-	}
 	switch c.Op.Value()[0] {
 	case '&':
 		cmd = BackgroundCmdDef{Cmd: cmd}
-	case '\n', ';':
+	case '\n', ';', '}':
 		// Nothing to do
 	default:
 		panic("bug!")
