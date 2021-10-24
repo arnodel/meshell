@@ -13,7 +13,7 @@ Not sure you want to do that :) Anyway:
 - [x] `exit` builtin
 - [x] simple commands (`ls -a`)
 - [x] pipelines (`ls | grep foo`)
-- [x] and, or liests (`touch foo || echo ouch`)
+- [x] and, or lists (`touch foo || echo ouch`)
 - [x] command lists (`sleep 10; echo "Wake up!"`)
 - [x] redirects to files (`ls >my-files`, `echo onions >>shopping.txt`, `go build . 2> build_errors`)
 - [x] redirect stdin (`cat <foo >bar`)
