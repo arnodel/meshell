@@ -48,7 +48,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode:     "cmd",
 		Name:     "openbkt",
-		Ptn:      `\(`,
+		Ptn:      `\(\s*`,
 		PushMode: "cmd",
 	},
 	{

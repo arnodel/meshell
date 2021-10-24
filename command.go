@@ -275,23 +275,20 @@ func (d SeqCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	right, err := d.Right.Command(sh, std)
-	if err != nil {
-		return nil, err
-	}
 	return &SeqCmd{
 		left:    left,
-		right:   right,
+		right:   func() (Command, error) { return d.Right.Command(sh, std) },
 		seqType: d.SeqType,
 		errCh:   make(chan error),
 	}, nil
 }
 
 type SeqCmd struct {
-	left, right Command
-	errCh       chan error
-	seqType     SeqType
-	exitCode    int
+	left     Command
+	right    func() (Command, error)
+	errCh    chan error
+	seqType  SeqType
+	exitCode int
 }
 
 var _ Command = &SeqCmd{}
@@ -316,10 +313,16 @@ func (s *SeqCmd) Start() error {
 			panic("bug!")
 		}
 		if shouldStartSecond {
-			err = s.right.Start()
-			if err == nil {
-				err = s.right.Wait()
-				exitCode = s.right.ExitCode()
+			var right Command
+			right, err = s.right()
+			if err != nil {
+				exitCode = 1
+			} else {
+				err = right.Start()
+				if err == nil {
+					err = right.Wait()
+					exitCode = right.ExitCode()
+				}
 			}
 		}
 		s.exitCode = exitCode
@@ -396,7 +399,48 @@ type SubshellCmdDef struct {
 }
 
 func (d *SubshellCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	return d.Body.Command(sh.SubShell(), std)
+	subshell := sh.SubShell()
+	cmd, err := d.Body.Command(subshell, std)
+	if err != nil {
+		return nil, err
+	}
+	return &SubshellCmd{
+		subshell: subshell,
+		cmd:      cmd,
+	}, nil
+}
+
+type SubshellCmd struct {
+	subshell *Shell
+	cmd      Command
+	exitCode int
+}
+
+var _ Command = &SubshellCmd{}
+
+func (c *SubshellCmd) Start() error {
+	err := c.cmd.Start()
+	go func() {
+		c.cmd.Wait()
+		c.subshell.Exit(c.cmd.ExitCode())
+	}()
+	return err
+}
+
+func (c *SubshellCmd) Wait() error {
+	c.exitCode = c.subshell.Wait()
+	if c.exitCode != 0 {
+		return errors.New("status code != 0")
+	}
+	return nil
+}
+
+func (c *SubshellCmd) ExitCode() int {
+	return c.exitCode
+}
+
+func (c *SubshellCmd) String() string {
+	return fmt.Sprintf("(%s)", c.cmd)
 }
 
 //

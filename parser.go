@@ -52,7 +52,7 @@ func (c *CmdListItem) GetCommand() (CommandDef, error) {
 	switch c.Op.Value()[0] {
 	case '&':
 		cmd = BackgroundCmdDef{Cmd: cmd}
-	case '\n', ';', '}':
+	case '\n', ';', '}', ')':
 		// Nothing to do
 	default:
 		panic("bug!")
@@ -104,7 +104,7 @@ type PipelineItem struct {
 	grammar.OneOf
 	Simple   *SimpleCmd
 	Group    *CmdGroup
-	SubShell *Subshell
+	Subshell *Subshell
 }
 
 func (i *PipelineItem) GetCommand() (CommandDef, error) {
@@ -113,6 +113,8 @@ func (i *PipelineItem) GetCommand() (CommandDef, error) {
 		return i.Simple.GetCommand()
 	case i.Group != nil:
 		return i.Group.GetCommand()
+	case i.Subshell != nil:
+		return i.Subshell.GetCommand()
 	default:
 		panic("bug!")
 	}
@@ -131,9 +133,9 @@ func (g *CmdGroup) GetCommand() (CommandDef, error) {
 
 type Subshell struct {
 	grammar.Seq
-	Open  Token `token:"openbkt"`
+	Open  Token `tok:"openbkt"`
 	Cmds  CmdList
-	Close Token `token:"closebkt"`
+	Close Token `tok:"closebkt"`
 }
 
 func (s *Subshell) GetCommand() (CommandDef, error) {
