@@ -341,7 +341,7 @@ func (s *SeqCmd) ExitCode() int {
 }
 
 //
-// Background COmmand
+// Background Command
 //
 
 type BackgroundCmdDef struct {
@@ -385,6 +385,18 @@ func (c *BackgroundCmd) String() string {
 
 func (c *BackgroundCmd) ExitCode() int {
 	return 0
+}
+
+//
+// Subshell
+//
+
+type SubshellCmdDef struct {
+	Body CommandDef
+}
+
+func (d *SubshellCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+	return d.Body.Command(sh.SubShell(), std)
 }
 
 //

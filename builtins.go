@@ -16,6 +16,7 @@ func init() {
 		"exit": builtinExit,
 	}
 }
+
 func builtinCd(sh *Shell, std StdStreams, args []string) (Command, error) {
 	var (
 		dir = ""

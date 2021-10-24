@@ -41,7 +41,7 @@ func (c *CmdList) GetCommand() (CommandDef, error) {
 type CmdListItem struct {
 	grammar.Seq
 	Cmd CmdLogical
-	Op  Token `tok:"term|closebrace*"`
+	Op  Token `tok:"term|closebrace*|closebkt*"`
 }
 
 func (c *CmdListItem) GetCommand() (CommandDef, error) {
@@ -102,8 +102,9 @@ type NextPipeline struct {
 
 type PipelineItem struct {
 	grammar.OneOf
-	Simple *SimpleCmd
-	Group  *CmdGroup
+	Simple   *SimpleCmd
+	Group    *CmdGroup
+	SubShell *Subshell
 }
 
 func (i *PipelineItem) GetCommand() (CommandDef, error) {
@@ -126,6 +127,21 @@ type CmdGroup struct {
 
 func (g *CmdGroup) GetCommand() (CommandDef, error) {
 	return g.Cmds.GetCommand()
+}
+
+type Subshell struct {
+	grammar.Seq
+	Open  Token `token:"openbkt"`
+	Cmds  CmdList
+	Close Token `token:"closebkt"`
+}
+
+func (s *Subshell) GetCommand() (CommandDef, error) {
+	body, err := s.Cmds.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	return &SubshellCmdDef{Body: body}, nil
 }
 
 type SimpleCmd struct {

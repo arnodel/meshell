@@ -56,3 +56,11 @@ func (s *Shell) StartJob(c Command) int {
 
 func (s *Shell) StopJob(job int) {
 }
+
+func (s *Shell) SubShell() *Shell {
+	sub := NewShell()
+	for k, v := range s.vars {
+		sub.SetVar(k, v)
+	}
+	return sub
+}
