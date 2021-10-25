@@ -192,20 +192,20 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 		}
 		parts[i] = val
 	}
-	env := make([]VarDef, len(c.Assignments))
+	env := make([]AssignDef, len(c.Assignments))
 	for i, a := range c.Assignments {
 		val, err := a.Value.Eval()
 		if err != nil {
 			return nil, err
 		}
-		env[i] = VarDef{
+		env[i] = AssignDef{
 			Name: getAssignDest(a.Dest.Value()),
 			Val:  val,
 		}
 	}
-	var cmd CommandDef = &ExecCmdDef{
-		Parts: parts,
-		Env:   env,
+	var cmd CommandDef = &SimpleCmdDef{
+		Parts:   parts,
+		Assigns: env,
 	}
 	for i := len(redirects) - 1; i >= 0; i-- {
 		r := redirects[i]

@@ -29,17 +29,17 @@ type Command interface {
 // Simple Command
 //
 
-type ExecCmdDef struct {
-	Parts []ValueDef
-	Env   []VarDef
+type SimpleCmdDef struct {
+	Parts   []ValueDef
+	Assigns []AssignDef
 }
 
-type VarDef struct {
+type AssignDef struct {
 	Name string
 	Val  ValueDef
 }
 
-func (d *ExecCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	var parts []string
 	for _, valDef := range d.Parts {
 		chunk, err := valDef.Values(sh, std)
@@ -49,8 +49,8 @@ func (d *ExecCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 		parts = append(parts, chunk...)
 	}
 	if len(parts) == 0 {
-		cmd := &Assign{shell: sh}
-		for _, varDef := range d.Env {
+		cmd := &SetVarsCmd{shell: sh}
+		for _, varDef := range d.Assigns {
 			val, err := varDef.Val.Value(sh, std)
 			if err != nil {
 				return nil, err
@@ -60,9 +60,9 @@ func (d *ExecCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 		return cmd, nil
 	}
 	var env []string
-	if len(d.Env) > 0 {
+	if len(d.Assigns) > 0 {
 		env = os.Environ()
-		for _, varDef := range d.Env {
+		for _, varDef := range d.Assigns {
 			val, err := varDef.Val.Value(sh, std)
 			if err != nil {
 				return nil, err
@@ -472,20 +472,20 @@ func (b *UnimplementedCommand) ExitCode() int {
 	return 0
 }
 
-type Assign struct {
+type SetVarsCmd struct {
 	UnimplementedCommand
 	items []struct{ key, value string }
 	shell *Shell
 }
 
-func (a *Assign) Add(key, value string) {
+func (a *SetVarsCmd) Add(key, value string) {
 	a.items = append(a.items, struct {
 		key   string
 		value string
 	}{key, value})
 }
 
-func (a *Assign) Start() error {
+func (a *SetVarsCmd) Start() error {
 	for _, item := range a.items {
 		a.shell.SetVar(item.key, item.value)
 	}
