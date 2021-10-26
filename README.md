@@ -28,4 +28,5 @@ Not sure you want to do that :) Anyway:
 - [ ] if then else
 - [ ] while loops
 - [ ] for loops
+- [ ] export (`export a=10`)
 - add more to the list

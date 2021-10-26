@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 )
@@ -399,7 +400,7 @@ type SubshellCmdDef struct {
 }
 
 func (d *SubshellCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	subshell := sh.SubShell()
+	subshell := sh.Subshell()
 	cmd, err := d.Body.Command(subshell, std)
 	if err != nil {
 		return nil, err
@@ -429,6 +430,7 @@ func (c *SubshellCmd) Start() error {
 
 func (c *SubshellCmd) Wait() error {
 	c.exitCode = c.subshell.Wait()
+	log.Print("CCC")
 	if c.exitCode != 0 {
 		return errors.New("status code != 0")
 	}
@@ -510,7 +512,7 @@ type Exit struct {
 
 func (c *Exit) Start() error {
 	c.shell.Exit(c.code)
-	return nil
+	return errors.New("exit")
 }
 
 func (c *Exit) ExitCode() int {

@@ -5,27 +5,37 @@ import (
 )
 
 type Shell struct {
-	vars   map[string]string
-	exitCh chan int
+	globals  map[string]string
+	exitCh   chan int
+	exported []string
 }
 
 func NewShell() *Shell {
 	return &Shell{
-		vars:   map[string]string{},
-		exitCh: make(chan int),
+		globals: map[string]string{},
+		exitCh:  make(chan int),
 	}
 }
 
 func (s *Shell) GetVar(name string) string {
-	val, ok := s.vars[name]
+	val, ok := s.globals[name]
 	if ok {
 		return val
 	}
 	return os.Getenv(name)
 }
 
+func (s *Shell) Export(name string) {
+	for _, gname := range s.exported {
+		if name == gname {
+			return
+		}
+	}
+	s.exported = append(s.exported, name)
+}
+
 func (s *Shell) SetVar(name, val string) {
-	s.vars[name] = val
+	s.globals[name] = val
 }
 
 func (s *Shell) SetCwd(dir string) error {
@@ -59,9 +69,9 @@ func (s *Shell) StartJob(c Command) int {
 func (s *Shell) StopJob(job int) {
 }
 
-func (s *Shell) SubShell() *Shell {
+func (s *Shell) Subshell() *Shell {
 	sub := NewShell()
-	for k, v := range s.vars {
+	for k, v := range s.globals {
 		sub.SetVar(k, v)
 	}
 	return sub
