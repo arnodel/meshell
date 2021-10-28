@@ -148,6 +148,7 @@ func (s *Subshell) GetCommand() (CommandDef, error) {
 
 type SimpleCmd struct {
 	grammar.Seq
+	Separator   Token `tok:"spc"`
 	Assignments []Assignment
 	Parts       []CmdPart
 }
@@ -176,7 +177,8 @@ type CmdPart struct {
 
 type Redirect struct {
 	grammar.Seq
-	Op   Token `tok:"redirect"`
+	Op   Token  `tok:"redirect"`
+	Spc  *Token `tok:"spc"`
 	File Value
 }
 
@@ -244,12 +246,6 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 	return cmd, nil
 }
 
-type AssignmentList struct {
-	grammar.Seq
-	First Assignment
-	Rest  []Assignment
-}
-
 type Assignment struct {
 	grammar.Seq
 	Dest  Token `tok:"assign"`
@@ -258,8 +254,11 @@ type Assignment struct {
 
 type Pipeline struct {
 	grammar.Seq
-	FirstCmd PipelineItem
-	Pipes    []PipedCmd
+	Separator *Token `tok:"spc"`
+	Start     *grammar.Empty
+	FirstCmd  PipelineItem
+	Pipes     []PipedCmd
+	End       *grammar.Empty
 }
 
 func (c *Pipeline) GetCommand() (CommandDef, error) {
@@ -284,6 +283,26 @@ type PipedCmd struct {
 }
 
 type Value struct {
+	grammar.Seq
+	Components []SingleValue
+}
+
+func (v *Value) Eval() (ValueDef, error) {
+	if len(v.Components) == 1 {
+		return v.Components[0].Eval()
+	}
+	components := make([]ValueDef, len(v.Components))
+	for i, c := range v.Components {
+		v, err := c.Eval()
+		if err != nil {
+			return nil, err
+		}
+		components[i] = v
+	}
+	return CompositeValueDef{Parts: components}, nil
+}
+
+type SingleValue struct {
 	grammar.OneOf
 	Literal    *Token `tok:"literal"`
 	String     *String
@@ -292,7 +311,7 @@ type Value struct {
 	DollarStmt *DollarStmt
 }
 
-func (v *Value) Eval() (ValueDef, error) {
+func (v *SingleValue) Eval() (ValueDef, error) {
 	switch {
 	case v.Literal != nil:
 		return LiteralValueDef{

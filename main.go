@@ -40,8 +40,8 @@ outerLoop:
 				continue outerLoop
 			}
 			var parsedLine Line
-			parseErr := grammar.Parse(&parsedLine, tokenStream)
-			// tokenStream.Dump(os.Stdout)
+			parseErr := grammar.Parse(&parsedLine, tokenStream) //, grammar.WithDefaultLogger)
+			tokenStream.Dump(os.Stdout)
 			if parseErr == nil {
 				linr.AppendHistory(strings.TrimSpace(line))
 				if parsedLine.CmdList == nil {

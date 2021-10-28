@@ -7,11 +7,12 @@ type Token = grammar.SimpleToken
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
+		Name: "spc",
 		Ptn:  `[ \t]+`,
 	},
 	{
 		Mode: "cmd",
-		Ptn:  `\\\n`,
+		Ptn:  `\\\n[ \t]*`,
 	},
 	{
 		Mode: "cmd",
