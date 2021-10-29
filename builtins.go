@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-type builtinFunc func(sh *Shell, std StdStreams, args []string) (Command, error)
+type builtinFunc func(sh *Shell, std StdStreams, args []string) (RunningJob, error)
 
 var builtins map[string]builtinFunc
 
@@ -17,7 +17,7 @@ func init() {
 	}
 }
 
-func builtinCd(sh *Shell, std StdStreams, args []string) (Command, error) {
+func builtinCd(sh *Shell, std StdStreams, args []string) (RunningJob, error) {
 	var (
 		dir = ""
 		err error
@@ -33,10 +33,14 @@ func builtinCd(sh *Shell, std StdStreams, args []string) (Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Cd{dir: dir, shell: sh}, nil
+	err = sh.SetCwd(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &ImmediateRunningJob{name: "cd"}, nil
 }
 
-func builtinExit(sh *Shell, std StdStreams, args []string) (Command, error) {
+func builtinExit(sh *Shell, std StdStreams, args []string) (RunningJob, error) {
 	var (
 		code int64
 		err  error
@@ -53,5 +57,6 @@ func builtinExit(sh *Shell, std StdStreams, args []string) (Command, error) {
 	default:
 		return nil, errors.New("exit: wrong number of arguments")
 	}
-	return &Exit{code: int(code), shell: sh}, nil
+	sh.Exit(int(code))
+	return &ImmediateRunningJob{name: "exit"}, nil
 }

@@ -48,14 +48,6 @@ func (s *Shell) GetCwd() (string, error) {
 	return os.Getwd()
 }
 
-func (s *Shell) StartCommand(c Command) error {
-	return c.Start()
-}
-
-func (s *Shell) WaitForCommand(c Command) error {
-	return c.Wait()
-}
-
 func (s *Shell) Exited() bool {
 	return s.exited
 }
@@ -75,13 +67,6 @@ func (s *Shell) ExitCode() int {
 func (s *Shell) Wait() int {
 	<-s.done
 	return s.exitCode
-}
-
-func (s *Shell) StartJob(c Command) int {
-	return 0
-}
-
-func (s *Shell) StopJob(job int) {
 }
 
 func (s *Shell) Subshell() *Shell {

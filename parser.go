@@ -19,7 +19,7 @@ type CmdList struct {
 	Rest  []CmdListItem
 }
 
-func (c *CmdList) GetCommand() (CommandDef, error) {
+func (c *CmdList) GetCommand() (JobDef, error) {
 	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func (c *CmdList) GetCommand() (CommandDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		cmdSeq = SeqCmdDef{
+		cmdSeq = &SequenceDef{
 			Left:    cmdSeq,
 			Right:   cmd,
 			SeqType: UncondSeq,
@@ -44,14 +44,14 @@ type CmdListItem struct {
 	Op  Token `tok:"term|closebrace*|closebkt*"`
 }
 
-func (c *CmdListItem) GetCommand() (CommandDef, error) {
+func (c *CmdListItem) GetCommand() (JobDef, error) {
 	cmd, err := c.Cmd.GetCommand()
 	if err != nil {
 		return nil, err
 	}
 	switch c.Op.Value()[0] {
 	case '&':
-		cmd = BackgroundCmdDef{Cmd: cmd}
+		cmd = &BackgroundJobDef{Cmd: cmd}
 	case '\n', ';', '}', ')':
 		// Nothing to do
 	default:
@@ -66,7 +66,7 @@ type CmdLogical struct {
 	Rest  []NextPipeline
 }
 
-func (c *CmdLogical) GetCommand() (CommandDef, error) {
+func (c *CmdLogical) GetCommand() (JobDef, error) {
 	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (c *CmdLogical) GetCommand() (CommandDef, error) {
 		default:
 			panic("bug!")
 		}
-		cmdSeq = SeqCmdDef{
+		cmdSeq = &SequenceDef{
 			Left:    cmdSeq,
 			Right:   cmd,
 			SeqType: op,
@@ -107,7 +107,7 @@ type PipelineItem struct {
 	Subshell *Subshell
 }
 
-func (i *PipelineItem) GetCommand() (CommandDef, error) {
+func (i *PipelineItem) GetCommand() (JobDef, error) {
 	switch {
 	case i.Simple != nil:
 		return i.Simple.GetCommand()
@@ -127,7 +127,7 @@ type CmdGroup struct {
 	Close Token `tok:"closebrace"`
 }
 
-func (g *CmdGroup) GetCommand() (CommandDef, error) {
+func (g *CmdGroup) GetCommand() (JobDef, error) {
 	return g.Cmds.GetCommand()
 }
 
@@ -138,12 +138,12 @@ type Subshell struct {
 	Close Token `tok:"closebkt"`
 }
 
-func (s *Subshell) GetCommand() (CommandDef, error) {
+func (s *Subshell) GetCommand() (JobDef, error) {
 	body, err := s.Cmds.GetCommand()
 	if err != nil {
 		return nil, err
 	}
-	return &SubshellCmdDef{Body: body}, nil
+	return &SubshellJobDef{Body: body}, nil
 }
 
 type SimpleCmd struct {
@@ -182,7 +182,7 @@ type Redirect struct {
 	File Value
 }
 
-func (c *SimpleCmd) GetCommand() (CommandDef, error) {
+func (c *SimpleCmd) GetCommand() (JobDef, error) {
 	args, redirects := c.sortParts()
 	parts := make([]ValueDef, len(args))
 	for i, arg := range args {
@@ -203,9 +203,9 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 			Val:  val,
 		}
 	}
-	var cmd CommandDef
+	var cmd JobDef
 	if len(parts) == 0 {
-		cmd = &SetVarsCmdDef{
+		cmd = &SetVarsDef{
 			Assigns: env,
 		}
 	} else {
@@ -241,7 +241,7 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 		default:
 			panic("bug!")
 		}
-		cmd = &RedirectCmdDef{
+		cmd = &RedirectDef{
 			Cmd:         cmd,
 			Replacement: repl,
 			FD:          fd,
@@ -267,7 +267,7 @@ type Pipeline struct {
 	End       *grammar.Empty
 }
 
-func (c *Pipeline) GetCommand() (CommandDef, error) {
+func (c *Pipeline) GetCommand() (JobDef, error) {
 	cmd, err := c.FirstCmd.GetCommand()
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func (c *Pipeline) GetCommand() (CommandDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		cmd = &PipelineCmdDef{Left: cmd, Right: right}
+		cmd = &PipelineDef{Left: cmd, Right: right}
 	}
 	return cmd, nil
 }

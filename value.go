@@ -46,7 +46,7 @@ func (d VarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 }
 
 type CommandValueDef struct {
-	Cmd CommandDef
+	Cmd JobDef
 }
 
 func (d CommandValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
@@ -60,17 +60,13 @@ func (d CommandValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
 func (d CommandValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	var buf bytes.Buffer
 	std.Out = &buf
-	cmd, err := d.Cmd.Command(sh, std)
+	job, err := d.Cmd.StartJob(sh, std)
 	if err != nil {
 		return "", err
 	}
-	err = cmd.Start()
-	if err != nil {
-		return "", err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return "", err
+	res := job.Wait()
+	if res.ExitCode != 0 {
+		return "", res
 	}
 	return strings.TrimSuffix(buf.String(), "\n"), nil
 }

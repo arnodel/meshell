@@ -43,19 +43,19 @@ outerLoop:
 					continue outerLoop
 				}
 				cmdDef, err := parsedLine.CmdList.GetCommand()
-				var cmd Command
+				var job RunningJob
 				if err == nil {
-					cmd, err = cmdDef.Command(shell, StdStreams{
+					job, err = cmdDef.StartJob(shell, StdStreams{
 						In:  os.Stdin,
 						Out: os.Stdout,
 						Err: os.Stderr,
 					})
 				}
 				if err == nil {
-					err = shell.StartCommand(cmd)
-				}
-				if err == nil {
-					err = shell.WaitForCommand(cmd)
+					res := job.Wait()
+					if !res.Success() {
+						err = res
+					}
 				}
 				if err != nil {
 					fmt.Println(err)

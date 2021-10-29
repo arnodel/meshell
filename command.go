@@ -13,16 +13,42 @@ type StdStreams struct {
 	Out, Err io.Writer
 }
 
-type CommandDef interface {
-	Command(*Shell, StdStreams) (Command, error)
+type JobDef interface {
+	StartJob(*Shell, StdStreams) (RunningJob, error)
 	// String() string
 }
 
-type Command interface {
-	Start() error
-	Wait() error
+type RunningJob interface {
+	Wait() JobOutcome
 	String() string
-	ExitCode() int
+}
+
+type JobOutcome struct {
+	ExitCode int
+	Err      error
+}
+
+func (r JobOutcome) Error() string {
+	if r.Err != nil {
+		return fmt.Sprintf("code %d: %s", r.ExitCode, r.Err)
+	}
+	return fmt.Sprintf("code %d", r.ExitCode)
+}
+
+func (r JobOutcome) Success() bool {
+	return r.ExitCode == 0
+}
+
+func errorOutcome(err error) JobOutcome {
+	return JobOutcome{
+		ExitCode: 1,
+		Err:      err,
+	}
+}
+
+type AssignDef struct {
+	Name string
+	Val  ValueDef
 }
 
 //
@@ -35,12 +61,9 @@ type SimpleCmdDef struct {
 	Assigns []AssignDef
 }
 
-type AssignDef struct {
-	Name string
-	Val  ValueDef
-}
+var _ JobDef = (*SimpleCmdDef)(nil)
 
-func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+func (d *SimpleCmdDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	var env []string
 	if len(d.Assigns) > 0 {
 		env = os.Environ()
@@ -77,37 +100,48 @@ func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	cmd.Stdout = std.Out
 	cmd.Stderr = std.Err
 	cmd.Env = env
-	return NewExecCmd(cmd), nil
+	err = cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+	return &ExecJob{cmd: cmd}, nil
 }
 
-type SetVarsCmdDef struct {
+type ExecJob struct {
+	cmd *exec.Cmd
+}
+
+var _ RunningJob = (*ExecJob)(nil)
+
+func (j *ExecJob) Wait() JobOutcome {
+	err := j.cmd.Wait()
+	if err != nil {
+		return errorOutcome(err)
+	}
+	return JobOutcome{
+		ExitCode: j.cmd.ProcessState.ExitCode(),
+	}
+}
+
+func (j *ExecJob) String() string {
+	return j.cmd.String()
+}
+
+type SetVarsDef struct {
 	Assigns []AssignDef
 }
 
-func (d *SetVarsCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	cmd := &SetVarsCmd{shell: sh}
+var _ JobDef = (*SetVarsDef)(nil)
+
+func (d *SetVarsDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	for _, varDef := range d.Assigns {
 		val, err := varDef.Val.Value(sh, std)
 		if err != nil {
 			return nil, err
 		}
-		cmd.Add(varDef.Name, val)
+		sh.SetVar(varDef.Name, val)
 	}
-	return cmd, nil
-}
-
-type ExecCmd struct {
-	*exec.Cmd
-}
-
-func NewExecCmd(cmd *exec.Cmd) *ExecCmd {
-	return &ExecCmd{cmd}
-}
-
-var _ Command = (*ExecCmd)(nil)
-
-func (c *ExecCmd) ExitCode() int {
-	return c.ProcessState.ExitCode()
+	return &ImmediateRunningJob{name: "setvars"}, nil
 }
 
 const (
@@ -117,15 +151,17 @@ const (
 	RM_ReadWrite
 )
 
-type RedirectCmdDef struct {
-	FD          int        // File descriptor to redirect
-	Replacement ValueDef   // Replacement (file name or fd)
-	Mode        int        // Mode to open file in
-	Cmd         CommandDef // Command to run
-	Ref         bool       // True if expecting an fd
+type RedirectDef struct {
+	FD          int      // File descriptor to redirect
+	Replacement ValueDef // Replacement (file name or fd)
+	Mode        int      // Mode to open file in
+	Cmd         JobDef   // Command to run
+	Ref         bool     // True if expecting an fd
 }
 
-func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+var _ JobDef = (*RedirectDef)(nil)
+
+func (d *RedirectDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	repl, err := d.Replacement.Value(sh, std)
 	if err != nil {
 		return nil, err
@@ -169,41 +205,47 @@ func (d *RedirectCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	case 2:
 		std.Err = f
 	}
-	cmd, err := d.Cmd.Command(sh, std)
+	job, err := d.Cmd.StartJob(sh, std)
 	if err != nil {
 		return nil, err
 	}
 	if d.Ref {
 		// We don't want to close the file
-		return cmd, nil
+		return job, nil
 	}
-	return &RedirectCmd{
-		Command: cmd,
-		file:    f,
+	return &RedirectJob{
+		job:  job,
+		file: f,
 	}, nil
 }
 
-type RedirectCmd struct {
-	Command
+type RedirectJob struct {
+	job  RunningJob
 	file *os.File
 }
 
-var _ Command = (*RedirectCmd)(nil)
+var _ RunningJob = (*RedirectJob)(nil)
 
-func (c *RedirectCmd) Wait() error {
+func (c *RedirectJob) Wait() JobOutcome {
 	defer c.file.Close()
-	return c.Command.Wait()
+	return c.job.Wait()
+}
+
+func (c *RedirectJob) String() string {
+	return c.job.String()
 }
 
 //
 // Command Pipeline
 //
 
-type PipelineCmdDef struct {
-	Left, Right CommandDef
+type PipelineDef struct {
+	Left, Right JobDef
 }
 
-func (d *PipelineCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+var _ JobDef = (*PipelineDef)(nil)
+
+func (d *PipelineDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -212,14 +254,15 @@ func (d *PipelineCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	std.Out = w
 	rstd.In = r
 
-	left, err := d.Left.Command(sh, std)
+	left, err := d.Left.StartJob(sh, std)
 	if err != nil {
 		return nil, err
 	}
-	right, err := d.Right.Command(sh, rstd)
+	right, err := d.Right.StartJob(sh, rstd)
 	if err != nil {
 		return nil, err
 	}
+	w.Close()
 	return &PipelineCmd{
 		left:  left,
 		right: right,
@@ -229,31 +272,19 @@ func (d *PipelineCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 }
 
 type PipelineCmd struct {
-	left, right  Command
+	left, right  RunningJob
 	pipeR, pipeW *os.File
 }
 
-var _ Command = &PipelineCmd{}
+var _ RunningJob = (*PipelineCmd)(nil)
 
-func (p *PipelineCmd) Start() error {
-	err := p.left.Start()
-	if err == nil {
-		err = p.right.Start()
-	}
-	p.pipeW.Close()
-	return err
-}
-
-func (p *PipelineCmd) Wait() error {
-	err := p.right.Wait()
+func (p *PipelineCmd) Wait() JobOutcome {
+	r1 := p.right.Wait()
 	p.pipeR.Close()
-	err2 := p.left.Wait()
-	_ = err2 // TODO: handle this error (ala bash set -o pipefail)
-	return err
-}
+	r2 := p.left.Wait()
 
-func (p *PipelineCmd) ExitCode() int {
-	return p.right.ExitCode()
+	_ = r2 // TODO: handle this error (ala bash set -o pipefail)
+	return r1
 }
 
 func (p *PipelineCmd) String() string {
@@ -272,223 +303,158 @@ const (
 	OrSeq
 )
 
-type SeqCmdDef struct {
-	Left, Right CommandDef
+type SequenceDef struct {
+	Left, Right JobDef
 	SeqType     SeqType
 }
 
-func (d SeqCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	left, err := d.Left.Command(sh, std)
+var _ JobDef = (*SequenceDef)(nil)
+
+func (d *SequenceDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+	left, err := d.Left.StartJob(sh, std)
 	if err != nil {
 		return nil, err
 	}
-	return &SeqCmd{
-		left: left,
-		right: func() (Command, error) {
-			return d.Right.Command(sh, std)
-		},
-		seqType: d.SeqType,
-		errCh:   make(chan error),
-		shell:   sh,
-	}, nil
-}
-
-type SeqCmd struct {
-	left     Command
-	right    func() (Command, error)
-	errCh    chan error
-	seqType  SeqType
-	exitCode int
-	shell    *Shell
-}
-
-var _ Command = &SeqCmd{}
-
-func (s *SeqCmd) Start() error {
-	err := s.left.Start()
-	if err != nil {
-		return err
-	}
+	resCh := make(chan JobOutcome)
 	go func() {
-		err := s.left.Wait()
-		exitCode := s.left.ExitCode()
+		res := left.Wait()
 		var shouldStartSecond bool
-		if !s.shell.Exited() {
-			switch s.seqType {
+		if !sh.Exited() {
+			switch d.SeqType {
 			case UncondSeq:
 				shouldStartSecond = true
 			case AndSeq:
-				shouldStartSecond = exitCode == 0
+				shouldStartSecond = res.ExitCode == 0
 			case OrSeq:
-				shouldStartSecond = exitCode != 0
+				shouldStartSecond = res.ExitCode != 0
 			default:
 				panic("bug!")
 			}
 		}
 		if shouldStartSecond {
-			var right Command
-			right, err = s.right()
+			var right RunningJob
+			right, err = d.Right.StartJob(sh, std)
 			if err != nil {
-				exitCode = 1
+				res = errorOutcome(err)
 			} else {
-				err = right.Start()
-				if err == nil {
-					err = right.Wait()
-					exitCode = right.ExitCode()
-				}
+				res = right.Wait()
 			}
 		}
-		s.exitCode = exitCode
-		s.errCh <- err
+		resCh <- res
 	}()
-	return nil
+	return &SequenceJob{resCh: resCh}, nil
 }
 
-func (s *SeqCmd) Wait() error {
-	return <-s.errCh
+type SequenceJob struct {
+	resCh chan JobOutcome
 }
 
-func (s *SeqCmd) String() string {
-	return fmt.Sprintf("%s; %s", s.left, s.right)
+var _ RunningJob = (*SequenceJob)(nil)
+
+func (s *SequenceJob) Wait() JobOutcome {
+	return <-s.resCh
 }
 
-func (s *SeqCmd) ExitCode() int {
-	return s.exitCode
+func (s *SequenceJob) String() string {
+	return "seqcmd"
 }
 
 //
 // Background Command
 //
 
-type BackgroundCmdDef struct {
-	Cmd CommandDef
+type BackgroundJobDef struct {
+	Cmd JobDef
 }
 
-func (d BackgroundCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	cmd, err := d.Cmd.Command(sh, std)
+var _ JobDef = (*BackgroundJobDef)(nil)
+
+func (d *BackgroundJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+	job, err := d.Cmd.StartJob(sh, std)
 	if err != nil {
 		return nil, err
 	}
-	return &BackgroundCmd{cmd: cmd}, nil
-}
-
-type BackgroundCmd struct {
-	cmd Command
-}
-
-var _ Command = &BackgroundCmd{}
-
-func (c *BackgroundCmd) Start() error {
-	err := c.cmd.Start()
-	if err != nil {
-		return err
-	}
 	// job := sh.StartJob(c)
 	go func() {
-		c.cmd.Wait()
+		job.Wait()
 		// sh.StopJob(job)
 	}()
-	return nil
+	return &BackgroundJob{job: job}, nil
 }
 
-func (c *BackgroundCmd) Wait() error {
-	return nil
+type BackgroundJob struct {
+	job RunningJob
 }
 
-func (c *BackgroundCmd) String() string {
-	return fmt.Sprintf("%s &", c.cmd)
+var _ RunningJob = (*BackgroundJob)(nil)
+
+func (c *BackgroundJob) Wait() JobOutcome {
+	return JobOutcome{}
 }
 
-func (c *BackgroundCmd) ExitCode() int {
-	return 0
+func (c *BackgroundJob) String() string {
+	return ""
 }
 
 //
 // Subshell
 //
 
-type SubshellCmdDef struct {
-	Body CommandDef
+type SubshellJobDef struct {
+	Body JobDef
 }
 
-func (d *SubshellCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+var _ JobDef = (*SubshellJobDef)(nil)
+
+func (d *SubshellJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	subshell := sh.Subshell()
-	cmd, err := d.Body.Command(subshell, std)
+	job, err := d.Body.StartJob(subshell, std)
 	if err != nil {
 		return nil, err
 	}
-	return &SubshellCmd{
+	go func() {
+		subshell.Exit(job.Wait().ExitCode)
+	}()
+	return &SubshellJob{
 		subshell: subshell,
-		cmd:      cmd,
 	}, nil
 }
 
-type SubshellCmd struct {
+type SubshellJob struct {
 	subshell *Shell
-	cmd      Command
-	exitCode int
 }
 
-var _ Command = &SubshellCmd{}
+var _ RunningJob = &SubshellJob{}
 
-func (c *SubshellCmd) Start() error {
-	err := c.cmd.Start()
-	go func() {
-		c.cmd.Wait()
-		if !c.subshell.exited {
-			c.subshell.Exit(c.cmd.ExitCode())
-		}
-	}()
-	return err
+func (c *SubshellJob) Wait() JobOutcome {
+	return JobOutcome{ExitCode: c.subshell.Wait()}
 }
 
-func (c *SubshellCmd) Wait() error {
-	c.exitCode = c.subshell.Wait()
-	if c.exitCode != 0 {
-		return errors.New("status code != 0")
-	}
-	return nil
-}
-
-func (c *SubshellCmd) ExitCode() int {
-	return c.exitCode
-}
-
-func (c *SubshellCmd) String() string {
-	return fmt.Sprintf("(%s)", c.cmd)
+func (c *SubshellJob) String() string {
+	return "subshell"
 }
 
 //
 // Bultins
 //
 
-type Builtin interface {
-	StartBuiltin(sh *Shell) error
+type ImmediateRunningJob struct {
+	name    string
+	outcome JobOutcome
 }
 
-type UnimplementedCommand struct {
+var _ RunningJob = &ImmediateRunningJob{}
+
+func (b *ImmediateRunningJob) Wait() JobOutcome {
+	return b.outcome
 }
 
-var _ Command = &UnimplementedCommand{}
-
-func (b *UnimplementedCommand) Start() error {
-	return nil
-}
-
-func (b *UnimplementedCommand) Wait() error {
-	return nil
-}
-
-func (b *UnimplementedCommand) String() string {
-	return "unimplemented command"
-}
-
-func (b *UnimplementedCommand) ExitCode() int {
-	return 0
+func (b *ImmediateRunningJob) String() string {
+	return b.name
 }
 
 type SetVarsCmd struct {
-	UnimplementedCommand
+	ImmediateRunningJob
 	items []struct{ key, value string }
 	shell *Shell
 }
@@ -505,31 +471,6 @@ func (a *SetVarsCmd) Start() error {
 		a.shell.SetVar(item.key, item.value)
 	}
 	return nil
-}
-
-type Cd struct {
-	UnimplementedCommand
-	dir   string
-	shell *Shell
-}
-
-func (c *Cd) Start() error {
-	return c.shell.SetCwd(c.dir)
-}
-
-type Exit struct {
-	UnimplementedCommand
-	code  int
-	shell *Shell
-}
-
-func (c *Exit) Start() error {
-	c.shell.Exit(c.code)
-	return nil
-}
-
-func (c *Exit) ExitCode() int {
-	return c.code
 }
 
 type AggregateError struct {

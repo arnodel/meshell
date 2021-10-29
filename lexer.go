@@ -61,7 +61,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
 		Name: "redirect",
-		Ptn:  `\d?>&?|\d?>>|&>>?|<`,
+		Ptn:  `\d?>>|\d?>&?|&>>?|<`,
 	},
 	{
 		Mode: "cmd",
