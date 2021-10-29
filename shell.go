@@ -6,14 +6,16 @@ import (
 
 type Shell struct {
 	globals  map[string]string
-	exitCh   chan int
+	done     chan struct{}
+	exited   bool
+	exitCode int
 	exported []string
 }
 
 func NewShell() *Shell {
 	return &Shell{
 		globals: map[string]string{},
-		exitCh:  make(chan int),
+		done:    make(chan struct{}),
 	}
 }
 
@@ -54,12 +56,25 @@ func (s *Shell) WaitForCommand(c Command) error {
 	return c.Wait()
 }
 
+func (s *Shell) Exited() bool {
+	return s.exited
+}
+
 func (s *Shell) Exit(code int) {
-	s.exitCh <- code
+	if !s.exited {
+		s.exited = true
+		s.exitCode = code
+		close(s.done)
+	}
+}
+
+func (s *Shell) ExitCode() int {
+	return s.exitCode
 }
 
 func (s *Shell) Wait() int {
-	return <-s.exitCh
+	<-s.done
+	return s.exitCode
 }
 
 func (s *Shell) StartJob(c Command) int {

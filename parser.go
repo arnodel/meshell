@@ -184,8 +184,6 @@ type Redirect struct {
 
 func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 	args, redirects := c.sortParts()
-	// TODO: deal with redirects
-	_ = redirects
 	parts := make([]ValueDef, len(args))
 	for i, arg := range args {
 		val, err := arg.Eval()
@@ -205,9 +203,17 @@ func (c *SimpleCmd) GetCommand() (CommandDef, error) {
 			Val:  val,
 		}
 	}
-	var cmd CommandDef = &SimpleCmdDef{
-		Parts:   parts,
-		Assigns: env,
+	var cmd CommandDef
+	if len(parts) == 0 {
+		cmd = &SetVarsCmdDef{
+			Assigns: env,
+		}
+	} else {
+		cmd = &SimpleCmdDef{
+			CmdName: parts[0],
+			Args:    parts[1:],
+			Assigns: env,
+		}
 	}
 	for i := len(redirects) - 1; i >= 0; i-- {
 		r := redirects[i]

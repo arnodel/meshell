@@ -16,11 +16,6 @@ func main() {
 	linr.SetCtrlCAborts(true)
 
 	shell := NewShell()
-	go func() {
-		code := shell.Wait()
-		linr.Close()
-		os.Exit(code)
-	}()
 outerLoop:
 	for {
 		cwd, _ := shell.GetCwd()
@@ -41,7 +36,7 @@ outerLoop:
 			}
 			var parsedLine Line
 			parseErr := grammar.Parse(&parsedLine, tokenStream) //, grammar.WithDefaultLogger)
-			tokenStream.Dump(os.Stdout)
+			// tokenStream.Dump(os.Stdout)
 			if parseErr == nil {
 				linr.AppendHistory(strings.TrimSpace(line))
 				if parsedLine.CmdList == nil {
@@ -64,6 +59,10 @@ outerLoop:
 				}
 				if err != nil {
 					fmt.Println(err)
+				}
+				if shell.Exited() {
+					linr.Close()
+					os.Exit(shell.Wait())
 				}
 				continue outerLoop
 			} else if parseErr.Token == grammar.EOF {

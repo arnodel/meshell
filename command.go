@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 )
@@ -31,7 +30,8 @@ type Command interface {
 //
 
 type SimpleCmdDef struct {
-	Parts   []ValueDef
+	CmdName ValueDef
+	Args    []ValueDef
 	Assigns []AssignDef
 }
 
@@ -41,25 +41,6 @@ type AssignDef struct {
 }
 
 func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
-	var parts []string
-	for _, valDef := range d.Parts {
-		chunk, err := valDef.Values(sh, std)
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, chunk...)
-	}
-	if len(parts) == 0 {
-		cmd := &SetVarsCmd{shell: sh}
-		for _, varDef := range d.Assigns {
-			val, err := varDef.Val.Value(sh, std)
-			if err != nil {
-				return nil, err
-			}
-			cmd.Add(varDef.Name, val)
-		}
-		return cmd, nil
-	}
 	var env []string
 	if len(d.Assigns) > 0 {
 		env = os.Environ()
@@ -71,13 +52,22 @@ func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 			env = append(env, fmt.Sprintf("%s=%s", varDef.Name, val))
 		}
 	}
-	cmdName := parts[0]
-	args := parts[1:]
-	var err error
+	cmdName, err := d.CmdName.Value(sh, std)
+	if err != nil {
+		return nil, err
+	}
+	var args []string
+	for _, valDef := range d.Args {
+		chunk, err := valDef.Values(sh, std)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, chunk...)
+	}
 	if f := builtins[cmdName]; f != nil {
 		return f(sh, std, args)
 	}
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(cmdName, args...)
 	dir, err := sh.GetCwd()
 	if err != nil {
 		return nil, err
@@ -88,6 +78,22 @@ func (d *SimpleCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 	cmd.Stderr = std.Err
 	cmd.Env = env
 	return NewExecCmd(cmd), nil
+}
+
+type SetVarsCmdDef struct {
+	Assigns []AssignDef
+}
+
+func (d *SetVarsCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
+	cmd := &SetVarsCmd{shell: sh}
+	for _, varDef := range d.Assigns {
+		val, err := varDef.Val.Value(sh, std)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Add(varDef.Name, val)
+	}
+	return cmd, nil
 }
 
 type ExecCmd struct {
@@ -277,10 +283,13 @@ func (d SeqCmdDef) Command(sh *Shell, std StdStreams) (Command, error) {
 		return nil, err
 	}
 	return &SeqCmd{
-		left:    left,
-		right:   func() (Command, error) { return d.Right.Command(sh, std) },
+		left: left,
+		right: func() (Command, error) {
+			return d.Right.Command(sh, std)
+		},
 		seqType: d.SeqType,
 		errCh:   make(chan error),
+		shell:   sh,
 	}, nil
 }
 
@@ -290,6 +299,7 @@ type SeqCmd struct {
 	errCh    chan error
 	seqType  SeqType
 	exitCode int
+	shell    *Shell
 }
 
 var _ Command = &SeqCmd{}
@@ -303,15 +313,17 @@ func (s *SeqCmd) Start() error {
 		err := s.left.Wait()
 		exitCode := s.left.ExitCode()
 		var shouldStartSecond bool
-		switch s.seqType {
-		case UncondSeq:
-			shouldStartSecond = true
-		case AndSeq:
-			shouldStartSecond = exitCode == 0
-		case OrSeq:
-			shouldStartSecond = exitCode != 0
-		default:
-			panic("bug!")
+		if !s.shell.Exited() {
+			switch s.seqType {
+			case UncondSeq:
+				shouldStartSecond = true
+			case AndSeq:
+				shouldStartSecond = exitCode == 0
+			case OrSeq:
+				shouldStartSecond = exitCode != 0
+			default:
+				panic("bug!")
+			}
 		}
 		if shouldStartSecond {
 			var right Command
@@ -423,14 +435,15 @@ func (c *SubshellCmd) Start() error {
 	err := c.cmd.Start()
 	go func() {
 		c.cmd.Wait()
-		c.subshell.Exit(c.cmd.ExitCode())
+		if !c.subshell.exited {
+			c.subshell.Exit(c.cmd.ExitCode())
+		}
 	}()
 	return err
 }
 
 func (c *SubshellCmd) Wait() error {
 	c.exitCode = c.subshell.Wait()
-	log.Print("CCC")
 	if c.exitCode != 0 {
 		return errors.New("status code != 0")
 	}
@@ -512,7 +525,7 @@ type Exit struct {
 
 func (c *Exit) Start() error {
 	c.shell.Exit(c.code)
-	return errors.New("exit")
+	return nil
 }
 
 func (c *Exit) ExitCode() int {
