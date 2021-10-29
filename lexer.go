@@ -86,6 +86,11 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "cmd",
+		Name: "kw",
+		Ptn:  `(?:if|then|elif|else|fi)\b`,
+	},
+	{
+		Mode: "cmd",
 		Name: "literal",
 		Ptn:  `[^\s();&\$|}]+`,
 	},

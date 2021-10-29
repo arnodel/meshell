@@ -434,6 +434,38 @@ func (c *SubshellJob) String() string {
 	return "subshell"
 }
 
+type IfCommand struct {
+	Condition  Command
+	Then, Else Command
+}
+
+var _ Command = (*IfCommand)(nil)
+
+func (c *IfCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+	job, err := c.Condition.StartJob(sh, std)
+	if err != nil {
+		return nil, err
+	}
+	resCh := make(chan JobOutcome)
+	go func() {
+		res := job.Wait()
+		var condJob RunningJob
+		if res.Success() {
+			condJob, err = c.Then.StartJob(sh, std)
+		} else if c.Else != nil {
+			condJob, err = c.Else.StartJob(sh, std)
+		}
+		if err != nil {
+			resCh <- errorOutcome(err)
+		} else if condJob != nil {
+			resCh <- condJob.Wait()
+		} else {
+			resCh <- JobOutcome{}
+		}
+	}()
+	return &JobSequence{resCh: resCh}, nil
+}
+
 //
 // Bultins
 //

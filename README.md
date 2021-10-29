@@ -25,7 +25,7 @@ Not sure you want to do that :) Anyway:
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
 - [ ] functions
-- [ ] if then else
+- [x] if then else
 - [ ] while loops
 - [ ] for loops
 - [ ] export (`export a=10`)

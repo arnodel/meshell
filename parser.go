@@ -102,6 +102,7 @@ type NextPipeline struct {
 
 type PipelineItem struct {
 	grammar.OneOf
+	IfStmt   *IfStmt
 	Simple   *SimpleCmd
 	Group    *CmdGroup
 	Subshell *Subshell
@@ -115,6 +116,8 @@ func (i *PipelineItem) GetCommand() (Command, error) {
 		return i.Group.GetCommand()
 	case i.Subshell != nil:
 		return i.Subshell.GetCommand()
+	case i.IfStmt != nil:
+		return i.IfStmt.GetCommand()
 	default:
 		panic("bug!")
 	}
@@ -256,6 +259,74 @@ type Assignment struct {
 	grammar.Seq
 	Dest  Token `tok:"assign"`
 	Value Value
+}
+
+type IfStmt struct {
+	grammar.Seq
+	Separator   *Token `tok:"spc"`
+	If          Token  `tok:"kw,if"`
+	Condition   CmdList
+	Then        Token `tok:"kw,then"`
+	ThenBody    CmdList
+	ElifClauses []ElifClause
+	ElseClause  *ElseClause
+	Fi          Token `tok:"kw,fi"`
+}
+
+func (s *IfStmt) GetCommand() (Command, error) {
+	cond, err := s.Condition.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	thenCmd, err := s.ThenBody.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	ifCmd := &IfCommand{
+		Condition: cond,
+		Then:      thenCmd,
+	}
+	cmd := ifCmd
+	for _, c := range s.ElifClauses {
+		cond, err = c.Condition.GetCommand()
+		if err != nil {
+			return nil, err
+		}
+		thenCmd, err := c.ThenBody.GetCommand()
+		if err != nil {
+			return nil, err
+		}
+		newCmd := &IfCommand{
+			Condition: cond,
+			Then:      thenCmd,
+		}
+		cmd.Else = newCmd
+		newCmd = cmd
+	}
+	if s.ElseClause != nil {
+		elseCmd, err := s.ElseClause.Body.GetCommand()
+		if err != nil {
+			return nil, err
+		}
+		cmd.Else = elseCmd
+	}
+	return ifCmd, nil
+}
+
+type ElifClause struct {
+	grammar.Seq
+	Separator *Token `tok:"spc"`
+	Elif      Token  `tok:"kw,elif"`
+	Condition CmdList
+	Then      Token `tok:"kw,then"`
+	ThenBody  CmdList
+}
+
+type ElseClause struct {
+	grammar.Seq
+	Separator *Token `tok:"spc"`
+	Else      Token  `tok:"kw,else"`
+	Body      CmdList
 }
 
 type Pipeline struct {

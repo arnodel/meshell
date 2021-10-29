@@ -11,6 +11,11 @@ import (
 )
 
 func main() {
+	debug := os.Getenv("DEBUG") != ""
+	var parseOpts []grammar.ParseOption
+	if debug {
+		parseOpts = append(parseOpts, grammar.WithDefaultLogger)
+	}
 	linr := liner.NewLiner()
 	defer linr.Close()
 	linr.SetCtrlCAborts(true)
@@ -35,8 +40,10 @@ outerLoop:
 				continue outerLoop
 			}
 			var parsedLine Line
-			parseErr := grammar.Parse(&parsedLine, tokenStream) //, grammar.WithDefaultLogger)
-			// tokenStream.Dump(os.Stdout)
+			parseErr := grammar.Parse(&parsedLine, tokenStream, parseOpts...)
+			if debug {
+				tokenStream.Dump(os.Stdout)
+			}
 			if parseErr == nil {
 				linr.AppendHistory(strings.TrimSpace(line))
 				if parsedLine.CmdList == nil {
