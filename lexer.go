@@ -5,6 +5,9 @@ import "github.com/arnodel/grammar"
 type Token = grammar.SimpleToken
 
 var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
+	//
+	// Command
+	//
 	{
 		Mode: "cmd",
 		Name: "spc",
@@ -40,6 +43,12 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Name:     "dollarbkt",
 		Ptn:      `\$\(\s*`,
 		PushMode: "cmd",
+	},
+	{
+		Mode:     "cmd",
+		Name:     "dollarbrace",
+		Ptn:      `\$\{`,
+		PushMode: "param",
 	},
 	{
 		Mode: "cmd",
@@ -94,6 +103,9 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Name: "literal",
 		Ptn:  `[^\s();&\$|}]+`,
 	},
+	//
+	// String
+	//
 	{
 		Mode:    "str",
 		Name:    "endquote",
@@ -117,8 +129,28 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		PushMode: "cmd",
 	},
 	{
+		Mode:     "str",
+		Name:     "dollarbrace",
+		Ptn:      `\$\{`,
+		PushMode: "param",
+	},
+	{
 		Mode: "str",
 		Name: "lit",
 		Ptn:  `[^\\$"]+`,
+	},
+	//
+	// Parameter
+	//
+	{
+		Mode:    "param",
+		Name:    "closebrace",
+		Ptn:     `}`,
+		PopMode: true,
+	},
+	{
+		Mode: "param",
+		Name: "name",
+		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*`,
 	},
 })

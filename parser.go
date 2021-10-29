@@ -409,11 +409,12 @@ func (v *Value) Eval() (ValueDef, error) {
 
 type SingleValue struct {
 	grammar.OneOf
-	Literal    *Token `tok:"literal"`
-	String     *String
-	Quote      *Token `tok:"litstr"`
-	EnvVar     *Token `tok:"envvar"`
-	DollarStmt *DollarStmt
+	Literal     *Token `tok:"literal"`
+	String      *String
+	Quote       *Token `tok:"litstr"`
+	EnvVar      *Token `tok:"envvar"`
+	DollarStmt  *DollarStmt
+	DollarBrace *DollarBrace
 }
 
 func (v *SingleValue) Eval() (ValueDef, error) {
@@ -425,6 +426,8 @@ func (v *SingleValue) Eval() (ValueDef, error) {
 		}, nil
 	case v.DollarStmt != nil:
 		return v.DollarStmt.Eval()
+	case v.DollarBrace != nil:
+		return v.DollarBrace.Eval()
 	case v.EnvVar != nil:
 		return VarValueDef{Name: v.EnvVar.Value()[1:]}, nil
 	case v.String != nil:
@@ -454,6 +457,17 @@ func (s *DollarStmt) Eval() (ValueDef, error) {
 	return CommandValueDef{Cmd: cmd}, nil
 }
 
+type DollarBrace struct {
+	grammar.Seq
+	Open    Token `tok:"dollarbrace"`
+	VarName Token `tok:"name"`
+	Close   Token `tok:"closebrace"`
+}
+
+func (s *DollarBrace) Eval() (ValueDef, error) {
+	return VarValueDef{Name: s.VarName.Value()}, nil
+}
+
 type String struct {
 	grammar.Seq
 	Open   Token `tok:"startquote"`
@@ -475,10 +489,11 @@ func (s *String) Eval() (ValueDef, error) {
 
 type StringChunk struct {
 	grammar.OneOf
-	Lit        *Token `tok:"lit"`
-	DollarStmt *DollarStmt
-	EnvVar     *Token `tok:"envvar"`
-	Escaped    *Token `tok:"escaped"`
+	Lit         *Token `tok:"lit"`
+	DollarStmt  *DollarStmt
+	DollarBrace *DollarBrace
+	EnvVar      *Token `tok:"envvar"`
+	Escaped     *Token `tok:"escaped"`
 }
 
 func (c *StringChunk) Eval() (ValueDef, error) {
@@ -487,6 +502,8 @@ func (c *StringChunk) Eval() (ValueDef, error) {
 		return LiteralValueDef{Val: c.Lit.Value()}, nil
 	case c.DollarStmt != nil:
 		return c.DollarStmt.Eval()
+	case c.DollarBrace != nil:
+		return c.DollarBrace.Eval()
 	case c.EnvVar != nil:
 		return VarValueDef{Name: c.EnvVar.Value()[1:]}, nil
 	case c.Escaped != nil:

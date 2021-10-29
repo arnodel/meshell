@@ -21,7 +21,8 @@ Not sure you want to do that :) Anyway:
 - [x] command groups (`{echo "my files"; ls}`)
 - [x] subshells (`(a=12; echo $a)`)
 - [x] env variable substitutions (`echo $PATH`)
-- [ ] general parameter expansion (`echo ${PATH}`) - that's a rabbit hole
+- [x] simple parameter substitution (`echo ${var}`)
+- [ ] general parameter expansion (`echo ${PATH:stuff}`) - that's a rabbit hole
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
 - [ ] functions
