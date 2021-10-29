@@ -35,6 +35,11 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "cmd",
+		Name: "arg",
+		Ptn:  `\$[0-9]+`,
+	},
+	{
+		Mode: "cmd",
 		Name: "assign",
 		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*=`,
 	},
@@ -152,5 +157,10 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Mode: "param",
 		Name: "name",
 		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*`,
+	},
+	{
+		Mode: "param",
+		Name: "argnum",
+		Ptn:  `[0-9]+`,
 	},
 })

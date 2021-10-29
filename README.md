@@ -30,4 +30,5 @@ Not sure you want to do that :) Anyway:
 - [x] while loops
 - [ ] for loops
 - [ ] export (`export a=10`)
+- [x] arguments (`echo $1 ${2}`)
 - add more to the list

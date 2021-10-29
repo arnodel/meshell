@@ -45,6 +45,18 @@ func (d VarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	return sh.GetVar(d.Name), nil
 }
 
+type ArgValueDef struct {
+	Number int
+}
+
+func (d ArgValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
+	return []string{sh.GetArg(d.Number)}, nil
+}
+
+func (d ArgValueDef) Value(sh *Shell, std StdStreams) (string, error) {
+	return sh.GetArg(d.Number), nil
+}
+
 type CommandValueDef struct {
 	Cmd Command
 }

@@ -5,6 +5,7 @@ import (
 )
 
 type Shell struct {
+	args     []string
 	globals  map[string]string
 	done     chan struct{}
 	exited   bool
@@ -12,11 +13,19 @@ type Shell struct {
 	exported []string
 }
 
-func NewShell() *Shell {
+func NewShell(args []string) *Shell {
 	return &Shell{
+		args:    args,
 		globals: map[string]string{},
 		done:    make(chan struct{}),
 	}
+}
+
+func (s *Shell) GetArg(n int) string {
+	if n >= len(s.args) {
+		return ""
+	}
+	return s.args[n]
 }
 
 func (s *Shell) GetVar(name string) string {
@@ -70,7 +79,11 @@ func (s *Shell) Wait() int {
 }
 
 func (s *Shell) Subshell() *Shell {
-	sub := NewShell()
+	args := make([]string, len(s.args))
+	for i, x := range s.args {
+		args[i] = x
+	}
+	sub := NewShell(args)
 	for k, v := range s.globals {
 		sub.SetVar(k, v)
 	}

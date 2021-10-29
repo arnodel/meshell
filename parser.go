@@ -413,6 +413,7 @@ type SingleValue struct {
 	String      *String
 	Quote       *Token `tok:"litstr"`
 	EnvVar      *Token `tok:"envvar"`
+	Arg         *Token `tok:"arg"`
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 }
@@ -430,6 +431,12 @@ func (v *SingleValue) Eval() (ValueDef, error) {
 		return v.DollarBrace.Eval()
 	case v.EnvVar != nil:
 		return VarValueDef{Name: v.EnvVar.Value()[1:]}, nil
+	case v.Arg != nil:
+		num, err := strconv.ParseInt(v.Arg.Value()[1:], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ArgValueDef{Number: int(num)}, nil
 	case v.String != nil:
 		return v.String.Eval()
 	case v.Quote != nil:
@@ -460,12 +467,23 @@ func (s *DollarStmt) Eval() (ValueDef, error) {
 type DollarBrace struct {
 	grammar.Seq
 	Open    Token `tok:"dollarbrace"`
-	VarName Token `tok:"name"`
+	VarName Token `tok:"name|argnum"`
 	Close   Token `tok:"closebrace"`
 }
 
 func (s *DollarBrace) Eval() (ValueDef, error) {
-	return VarValueDef{Name: s.VarName.Value()}, nil
+	switch s.VarName.Type() {
+	case "param":
+		return VarValueDef{Name: s.VarName.Value()}, nil
+	case "argnum":
+		argnum, err := strconv.ParseInt(s.VarName.Value(), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ArgValueDef{Number: int(argnum)}, nil
+	default:
+		panic("bug!")
+	}
 }
 
 type String struct {
