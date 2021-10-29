@@ -46,7 +46,7 @@ func (d VarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 }
 
 type CommandValueDef struct {
-	Cmd JobDef
+	Cmd Command
 }
 
 func (d CommandValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {

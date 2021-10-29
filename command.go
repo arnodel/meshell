@@ -13,7 +13,7 @@ type StdStreams struct {
 	Out, Err io.Writer
 }
 
-type JobDef interface {
+type Command interface {
 	StartJob(*Shell, StdStreams) (RunningJob, error)
 	// String() string
 }
@@ -61,7 +61,7 @@ type SimpleCmdDef struct {
 	Assigns []AssignDef
 }
 
-var _ JobDef = (*SimpleCmdDef)(nil)
+var _ Command = (*SimpleCmdDef)(nil)
 
 func (d *SimpleCmdDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	var env []string
@@ -131,7 +131,7 @@ type SetVarsDef struct {
 	Assigns []AssignDef
 }
 
-var _ JobDef = (*SetVarsDef)(nil)
+var _ Command = (*SetVarsDef)(nil)
 
 func (d *SetVarsDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	for _, varDef := range d.Assigns {
@@ -155,11 +155,11 @@ type RedirectDef struct {
 	FD          int      // File descriptor to redirect
 	Replacement ValueDef // Replacement (file name or fd)
 	Mode        int      // Mode to open file in
-	Cmd         JobDef   // Command to run
+	Cmd         Command  // Command to run
 	Ref         bool     // True if expecting an fd
 }
 
-var _ JobDef = (*RedirectDef)(nil)
+var _ Command = (*RedirectDef)(nil)
 
 func (d *RedirectDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	repl, err := d.Replacement.Value(sh, std)
@@ -240,10 +240,10 @@ func (c *RedirectJob) String() string {
 //
 
 type PipelineDef struct {
-	Left, Right JobDef
+	Left, Right Command
 }
 
-var _ JobDef = (*PipelineDef)(nil)
+var _ Command = (*PipelineDef)(nil)
 
 func (d *PipelineDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	r, w, err := os.Pipe()
@@ -304,11 +304,11 @@ const (
 )
 
 type SequenceDef struct {
-	Left, Right JobDef
+	Left, Right Command
 	SeqType     SeqType
 }
 
-var _ JobDef = (*SequenceDef)(nil)
+var _ Command = (*SequenceDef)(nil)
 
 func (d *SequenceDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	left, err := d.Left.StartJob(sh, std)
@@ -364,10 +364,10 @@ func (s *SequenceJob) String() string {
 //
 
 type BackgroundJobDef struct {
-	Cmd JobDef
+	Cmd Command
 }
 
-var _ JobDef = (*BackgroundJobDef)(nil)
+var _ Command = (*BackgroundJobDef)(nil)
 
 func (d *BackgroundJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	job, err := d.Cmd.StartJob(sh, std)
@@ -401,10 +401,10 @@ func (c *BackgroundJob) String() string {
 //
 
 type SubshellJobDef struct {
-	Body JobDef
+	Body Command
 }
 
-var _ JobDef = (*SubshellJobDef)(nil)
+var _ Command = (*SubshellJobDef)(nil)
 
 func (d *SubshellJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	subshell := sh.Subshell()

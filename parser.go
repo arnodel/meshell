@@ -19,7 +19,7 @@ type CmdList struct {
 	Rest  []CmdListItem
 }
 
-func (c *CmdList) GetCommand() (JobDef, error) {
+func (c *CmdList) GetCommand() (Command, error) {
 	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ type CmdListItem struct {
 	Op  Token `tok:"term|closebrace*|closebkt*"`
 }
 
-func (c *CmdListItem) GetCommand() (JobDef, error) {
+func (c *CmdListItem) GetCommand() (Command, error) {
 	cmd, err := c.Cmd.GetCommand()
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ type CmdLogical struct {
 	Rest  []NextPipeline
 }
 
-func (c *CmdLogical) GetCommand() (JobDef, error) {
+func (c *CmdLogical) GetCommand() (Command, error) {
 	cmdSeq, err := c.First.GetCommand()
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ type PipelineItem struct {
 	Subshell *Subshell
 }
 
-func (i *PipelineItem) GetCommand() (JobDef, error) {
+func (i *PipelineItem) GetCommand() (Command, error) {
 	switch {
 	case i.Simple != nil:
 		return i.Simple.GetCommand()
@@ -127,7 +127,7 @@ type CmdGroup struct {
 	Close Token `tok:"closebrace"`
 }
 
-func (g *CmdGroup) GetCommand() (JobDef, error) {
+func (g *CmdGroup) GetCommand() (Command, error) {
 	return g.Cmds.GetCommand()
 }
 
@@ -138,7 +138,7 @@ type Subshell struct {
 	Close Token `tok:"closebkt"`
 }
 
-func (s *Subshell) GetCommand() (JobDef, error) {
+func (s *Subshell) GetCommand() (Command, error) {
 	body, err := s.Cmds.GetCommand()
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ type Redirect struct {
 	File Value
 }
 
-func (c *SimpleCmd) GetCommand() (JobDef, error) {
+func (c *SimpleCmd) GetCommand() (Command, error) {
 	args, redirects := c.sortParts()
 	parts := make([]ValueDef, len(args))
 	for i, arg := range args {
@@ -203,7 +203,7 @@ func (c *SimpleCmd) GetCommand() (JobDef, error) {
 			Val:  val,
 		}
 	}
-	var cmd JobDef
+	var cmd Command
 	if len(parts) == 0 {
 		cmd = &SetVarsDef{
 			Assigns: env,
@@ -267,7 +267,7 @@ type Pipeline struct {
 	End       *grammar.Empty
 }
 
-func (c *Pipeline) GetCommand() (JobDef, error) {
+func (c *Pipeline) GetCommand() (Command, error) {
 	cmd, err := c.FirstCmd.GetCommand()
 	if err != nil {
 		return nil, err
