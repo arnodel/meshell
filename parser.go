@@ -29,7 +29,7 @@ func (c *CmdList) GetCommand() (Command, error) {
 		if err != nil {
 			return nil, err
 		}
-		cmdSeq = &SequenceDef{
+		cmdSeq = &CommandSequence{
 			Left:    cmdSeq,
 			Right:   cmd,
 			SeqType: UncondSeq,
@@ -51,7 +51,7 @@ func (c *CmdListItem) GetCommand() (Command, error) {
 	}
 	switch c.Op.Value()[0] {
 	case '&':
-		cmd = &BackgroundJobDef{Cmd: cmd}
+		cmd = &BackgroundCommand{Cmd: cmd}
 	case '\n', ';', '}', ')':
 		// Nothing to do
 	default:
@@ -85,7 +85,7 @@ func (c *CmdLogical) GetCommand() (Command, error) {
 		default:
 			panic("bug!")
 		}
-		cmdSeq = &SequenceDef{
+		cmdSeq = &CommandSequence{
 			Left:    cmdSeq,
 			Right:   cmd,
 			SeqType: op,
@@ -143,7 +143,7 @@ func (s *Subshell) GetCommand() (Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SubshellJobDef{Body: body}, nil
+	return &SubshellCommand{Body: body}, nil
 }
 
 type SimpleCmd struct {
@@ -205,11 +205,11 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	}
 	var cmd Command
 	if len(parts) == 0 {
-		cmd = &SetVarsDef{
+		cmd = &SetVarsCommand{
 			Assigns: env,
 		}
 	} else {
-		cmd = &SimpleCmdDef{
+		cmd = &SimpleCommand{
 			CmdName: parts[0],
 			Args:    parts[1:],
 			Assigns: env,
@@ -241,7 +241,7 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 		default:
 			panic("bug!")
 		}
-		cmd = &RedirectDef{
+		cmd = &RedirectCommand{
 			Cmd:         cmd,
 			Replacement: repl,
 			FD:          fd,
@@ -277,7 +277,7 @@ func (c *Pipeline) GetCommand() (Command, error) {
 		if err != nil {
 			return nil, err
 		}
-		cmd = &PipelineDef{Left: cmd, Right: right}
+		cmd = &PipelineCommand{Left: cmd, Right: right}
 	}
 	return cmd, nil
 }

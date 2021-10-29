@@ -55,15 +55,15 @@ type AssignDef struct {
 // Simple Command
 //
 
-type SimpleCmdDef struct {
+type SimpleCommand struct {
 	CmdName ValueDef
 	Args    []ValueDef
 	Assigns []AssignDef
 }
 
-var _ Command = (*SimpleCmdDef)(nil)
+var _ Command = (*SimpleCommand)(nil)
 
-func (d *SimpleCmdDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *SimpleCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	var env []string
 	if len(d.Assigns) > 0 {
 		env = os.Environ()
@@ -127,13 +127,13 @@ func (j *ExecJob) String() string {
 	return j.cmd.String()
 }
 
-type SetVarsDef struct {
+type SetVarsCommand struct {
 	Assigns []AssignDef
 }
 
-var _ Command = (*SetVarsDef)(nil)
+var _ Command = (*SetVarsCommand)(nil)
 
-func (d *SetVarsDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *SetVarsCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	for _, varDef := range d.Assigns {
 		val, err := varDef.Val.Value(sh, std)
 		if err != nil {
@@ -151,7 +151,7 @@ const (
 	RM_ReadWrite
 )
 
-type RedirectDef struct {
+type RedirectCommand struct {
 	FD          int      // File descriptor to redirect
 	Replacement ValueDef // Replacement (file name or fd)
 	Mode        int      // Mode to open file in
@@ -159,9 +159,9 @@ type RedirectDef struct {
 	Ref         bool     // True if expecting an fd
 }
 
-var _ Command = (*RedirectDef)(nil)
+var _ Command = (*RedirectCommand)(nil)
 
-func (d *RedirectDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *RedirectCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	repl, err := d.Replacement.Value(sh, std)
 	if err != nil {
 		return nil, err
@@ -239,13 +239,13 @@ func (c *RedirectJob) String() string {
 // Command Pipeline
 //
 
-type PipelineDef struct {
+type PipelineCommand struct {
 	Left, Right Command
 }
 
-var _ Command = (*PipelineDef)(nil)
+var _ Command = (*PipelineCommand)(nil)
 
-func (d *PipelineDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *PipelineCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -263,7 +263,7 @@ func (d *PipelineDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 		return nil, err
 	}
 	w.Close()
-	return &PipelineCmd{
+	return &PipelineJob{
 		left:  left,
 		right: right,
 		pipeR: r,
@@ -271,14 +271,14 @@ func (d *PipelineDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	}, nil
 }
 
-type PipelineCmd struct {
+type PipelineJob struct {
 	left, right  RunningJob
 	pipeR, pipeW *os.File
 }
 
-var _ RunningJob = (*PipelineCmd)(nil)
+var _ RunningJob = (*PipelineJob)(nil)
 
-func (p *PipelineCmd) Wait() JobOutcome {
+func (p *PipelineJob) Wait() JobOutcome {
 	r1 := p.right.Wait()
 	p.pipeR.Close()
 	r2 := p.left.Wait()
@@ -287,7 +287,7 @@ func (p *PipelineCmd) Wait() JobOutcome {
 	return r1
 }
 
-func (p *PipelineCmd) String() string {
+func (p *PipelineJob) String() string {
 	return fmt.Sprintf("%s | %s", p.left, p.right)
 }
 
@@ -303,14 +303,14 @@ const (
 	OrSeq
 )
 
-type SequenceDef struct {
+type CommandSequence struct {
 	Left, Right Command
 	SeqType     SeqType
 }
 
-var _ Command = (*SequenceDef)(nil)
+var _ Command = (*CommandSequence)(nil)
 
-func (d *SequenceDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *CommandSequence) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	left, err := d.Left.StartJob(sh, std)
 	if err != nil {
 		return nil, err
@@ -342,20 +342,20 @@ func (d *SequenceDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 		}
 		resCh <- res
 	}()
-	return &SequenceJob{resCh: resCh}, nil
+	return &JobSequence{resCh: resCh}, nil
 }
 
-type SequenceJob struct {
+type JobSequence struct {
 	resCh chan JobOutcome
 }
 
-var _ RunningJob = (*SequenceJob)(nil)
+var _ RunningJob = (*JobSequence)(nil)
 
-func (s *SequenceJob) Wait() JobOutcome {
+func (s *JobSequence) Wait() JobOutcome {
 	return <-s.resCh
 }
 
-func (s *SequenceJob) String() string {
+func (s *JobSequence) String() string {
 	return "seqcmd"
 }
 
@@ -363,13 +363,13 @@ func (s *SequenceJob) String() string {
 // Background Command
 //
 
-type BackgroundJobDef struct {
+type BackgroundCommand struct {
 	Cmd Command
 }
 
-var _ Command = (*BackgroundJobDef)(nil)
+var _ Command = (*BackgroundCommand)(nil)
 
-func (d *BackgroundJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *BackgroundCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	job, err := d.Cmd.StartJob(sh, std)
 	if err != nil {
 		return nil, err
@@ -400,13 +400,13 @@ func (c *BackgroundJob) String() string {
 // Subshell
 //
 
-type SubshellJobDef struct {
+type SubshellCommand struct {
 	Body Command
 }
 
-var _ Command = (*SubshellJobDef)(nil)
+var _ Command = (*SubshellCommand)(nil)
 
-func (d *SubshellJobDef) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (d *SubshellCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	subshell := sh.Subshell()
 	job, err := d.Body.StartJob(subshell, std)
 	if err != nil {
