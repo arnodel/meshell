@@ -102,10 +102,11 @@ type NextPipeline struct {
 
 type PipelineItem struct {
 	grammar.OneOf
-	IfStmt   *IfStmt
-	Simple   *SimpleCmd
-	Group    *CmdGroup
-	Subshell *Subshell
+	IfStmt    *IfStmt
+	WhileStmt *WhileStmt
+	Simple    *SimpleCmd
+	Group     *CmdGroup
+	Subshell  *Subshell
 }
 
 func (i *PipelineItem) GetCommand() (Command, error) {
@@ -118,6 +119,8 @@ func (i *PipelineItem) GetCommand() (Command, error) {
 		return i.Subshell.GetCommand()
 	case i.IfStmt != nil:
 		return i.IfStmt.GetCommand()
+	case i.WhileStmt != nil:
+		return i.WhileStmt.GetCommand()
 	default:
 		panic("bug!")
 	}
@@ -327,6 +330,31 @@ type ElseClause struct {
 	Separator *Token `tok:"spc"`
 	Else      Token  `tok:"kw,else"`
 	Body      CmdList
+}
+
+type WhileStmt struct {
+	grammar.Seq
+	Separator *Token `tok:"spc"`
+	While     Token  `tok:"kw,while"`
+	Condition CmdList
+	Do        Token `tok:"kw,do"`
+	Body      CmdList
+	Done      Token `tok:"kw,done"`
+}
+
+func (s *WhileStmt) GetCommand() (Command, error) {
+	cond, err := s.Condition.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	body, err := s.Body.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	return &WhileCommand{
+		Condition: cond,
+		Body:      body,
+	}, nil
 }
 
 type Pipeline struct {

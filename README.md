@@ -26,7 +26,7 @@ Not sure you want to do that :) Anyway:
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
 - [ ] functions
 - [x] if then else
-- [ ] while loops
+- [x] while loops
 - [ ] for loops
 - [ ] export (`export a=10`)
 - add more to the list

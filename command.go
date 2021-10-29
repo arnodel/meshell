@@ -466,6 +466,40 @@ func (c *IfCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	return &JobSequence{resCh: resCh}, nil
 }
 
+type WhileCommand struct {
+	Condition Command
+	Body      Command
+}
+
+var _ Command = (*WhileCommand)(nil)
+
+func (c *WhileCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+	resCh := make(chan JobOutcome)
+	go func() {
+		var res JobOutcome
+		for {
+			job, err := c.Condition.StartJob(sh, std)
+			if err != nil {
+				res = errorOutcome(err)
+				break
+			}
+			res = job.Wait()
+			if !res.Success() {
+				res = JobOutcome{}
+				break
+			}
+			job, err = c.Body.StartJob(sh, std)
+			if err != nil {
+				res = errorOutcome(err)
+				break
+			}
+			job.Wait()
+		}
+		resCh <- res
+	}()
+	return &JobSequence{resCh: resCh}, nil
+}
+
 //
 // Bultins
 //
