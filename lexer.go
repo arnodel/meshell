@@ -124,8 +124,8 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "str",
-		Name: "arg",
-		Ptn:  `\$[0-9]+`,
+		Name: "specialvar",
+		Ptn:  `\$(?:[0-9]+|[?#@$])`,
 	},
 	{
 		Mode:     "str",
@@ -162,5 +162,10 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Mode: "param",
 		Name: "argnum",
 		Ptn:  `[0-9]+`,
+	},
+	{
+		Mode: "param",
+		Name: "special",
+		Ptn:  `[?#@$]`,
 	},
 })

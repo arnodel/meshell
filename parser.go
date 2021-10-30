@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/arnodel/grammar"
@@ -475,24 +474,13 @@ func (s *DollarStmt) Eval() (ValueDef, error) {
 
 type DollarBrace struct {
 	grammar.Seq
-	Open    Token `tok:"dollarbrace"`
-	VarName Token `tok:"name|argnum"`
-	Close   Token `tok:"closebrace"`
+	Open      Token `tok:"dollarbrace"`
+	ParamName Token `tok:"name|argnum|special"`
+	Close     Token `tok:"closebrace"`
 }
 
 func (s *DollarBrace) Eval() (ValueDef, error) {
-	switch s.VarName.Type() {
-	case "name":
-		return VarValueDef{Name: s.VarName.Value()}, nil
-	case "argnum":
-		argnum, err := strconv.ParseInt(s.VarName.Value(), 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		return ArgValueDef{Number: int(argnum)}, nil
-	default:
-		panic("bug!")
-	}
+	return ParamValueDef(s.ParamName.Value())
 }
 
 type String struct {
@@ -519,8 +507,7 @@ type StringChunk struct {
 	Lit         *Token `tok:"lit"`
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
-	EnvVar      *Token `tok:"envvar"`
-	SpecialVar  *Token `tok:"specialvar"`
+	Param       *Token `tok:"envvar|specialvar"`
 }
 
 func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
@@ -531,20 +518,8 @@ func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
 		return c.DollarStmt.Eval()
 	case c.DollarBrace != nil:
 		return c.DollarBrace.Eval()
-	case c.EnvVar != nil:
-		return VarValueDef{Name: c.EnvVar.Value()[1:]}, nil
-	case c.SpecialVar != nil:
-		val := c.SpecialVar.Value()[1:]
-		switch val[0] {
-		case '?', '#', '@', '$':
-			return SpecialVarValueDef{Name: val[0]}, nil
-		default:
-			num, err := strconv.ParseInt(val, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			return ArgValueDef{Number: int(num)}, nil
-		}
+	case c.Param != nil:
+		return ParamValueDef(c.Param.Value()[1:])
 	default:
 		panic("bug!")
 	}

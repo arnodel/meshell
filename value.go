@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -32,6 +33,24 @@ func (d LiteralValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
 
 func (d LiteralValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	return d.Val, nil
+}
+
+func ParamValueDef(param string) (ValueDef, error) {
+	if len(param) == 0 {
+		return nil, errors.New("invalid empty param")
+	}
+	switch p0 := param[0]; {
+	case p0 >= '0' && p0 <= '9':
+		argnum, err := strconv.ParseInt(param, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ArgValueDef{Number: int(argnum)}, nil
+	case strings.IndexByte("?#@$", p0) != -1:
+		return SpecialVarValueDef{Name: p0}, nil
+	default:
+		return VarValueDef{Name: param}, nil
+	}
 }
 
 type VarValueDef struct {
