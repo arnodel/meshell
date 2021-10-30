@@ -105,7 +105,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "cmd",
-		Name: "literal",
+		Name: "lit",
 		Ptn:  `[^\s();&\$|}]+`,
 	},
 	//
@@ -126,6 +126,11 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Mode: "str",
 		Name: "envvar",
 		Ptn:  `\$[a-zA-Z_][a-zA-Z0-9_-]*`,
+	},
+	{
+		Mode: "str",
+		Name: "arg",
+		Ptn:  `\$[0-9]+`,
 	},
 	{
 		Mode:     "str",

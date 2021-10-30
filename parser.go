@@ -437,9 +437,9 @@ func (v *Value) Eval() (ValueDef, error) {
 
 type SingleValue struct {
 	grammar.OneOf
-	Literal     *Token `tok:"literal"`
 	String      *String
 	Quote       *Token `tok:"litstr"`
+	Literal     *Token `tok:"lit"`
 	EnvVar      *Token `tok:"envvar"`
 	Arg         *Token `tok:"arg"`
 	DollarStmt  *DollarStmt
@@ -539,6 +539,7 @@ type StringChunk struct {
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 	EnvVar      *Token `tok:"envvar"`
+	Arg         *Token `tok:"arg"`
 	Escaped     *Token `tok:"escaped"`
 }
 
@@ -552,6 +553,12 @@ func (c *StringChunk) Eval() (ValueDef, error) {
 		return c.DollarBrace.Eval()
 	case c.EnvVar != nil:
 		return VarValueDef{Name: c.EnvVar.Value()[1:]}, nil
+	case c.Arg != nil:
+		num, err := strconv.ParseInt(c.Arg.Value()[1:], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ArgValueDef{Number: int(num)}, nil
 	case c.Escaped != nil:
 		r, _, _, err := strconv.UnquoteChar(c.Escaped.Value(), '"')
 		if err != nil {
