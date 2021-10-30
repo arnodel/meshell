@@ -439,32 +439,11 @@ type SingleValue struct {
 	grammar.OneOf
 	String      *String
 	Quote       *Token `tok:"litstr"`
-	Literal     *Token `tok:"lit"`
-	EnvVar      *Token `tok:"envvar"`
-	Arg         *Token `tok:"arg"`
-	DollarStmt  *DollarStmt
-	DollarBrace *DollarBrace
+	StringChunk *StringChunk
 }
 
 func (v *SingleValue) Eval() (ValueDef, error) {
 	switch {
-	case v.Literal != nil:
-		return LiteralValueDef{
-			Val:    v.Literal.Value(),
-			Expand: true,
-		}, nil
-	case v.DollarStmt != nil:
-		return v.DollarStmt.Eval()
-	case v.DollarBrace != nil:
-		return v.DollarBrace.Eval()
-	case v.EnvVar != nil:
-		return VarValueDef{Name: v.EnvVar.Value()[1:]}, nil
-	case v.Arg != nil:
-		num, err := strconv.ParseInt(v.Arg.Value()[1:], 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		return ArgValueDef{Number: int(num)}, nil
 	case v.String != nil:
 		return v.String.Eval()
 	case v.Quote != nil:
@@ -472,6 +451,8 @@ func (v *SingleValue) Eval() (ValueDef, error) {
 			Val:    strings.Trim(v.Quote.Value(), "'"),
 			Expand: false,
 		}, nil
+	case v.StringChunk != nil:
+		return v.StringChunk.Eval(false)
 	default:
 		panic("bug!")
 	}
@@ -501,7 +482,7 @@ type DollarBrace struct {
 
 func (s *DollarBrace) Eval() (ValueDef, error) {
 	switch s.VarName.Type() {
-	case "param":
+	case "name":
 		return VarValueDef{Name: s.VarName.Value()}, nil
 	case "argnum":
 		argnum, err := strconv.ParseInt(s.VarName.Value(), 10, 64)
@@ -525,7 +506,7 @@ func (s *String) Eval() (ValueDef, error) {
 	parts := make([]ValueDef, len(s.Chunks))
 	var err error
 	for i, chunk := range s.Chunks {
-		parts[i], err = chunk.Eval()
+		parts[i], err = chunk.Eval(true)
 		if err != nil {
 			return nil, err
 		}
@@ -540,13 +521,12 @@ type StringChunk struct {
 	DollarBrace *DollarBrace
 	EnvVar      *Token `tok:"envvar"`
 	Arg         *Token `tok:"arg"`
-	Escaped     *Token `tok:"escaped"`
 }
 
-func (c *StringChunk) Eval() (ValueDef, error) {
+func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
 	switch {
 	case c.Lit != nil:
-		return LiteralValueDef{Val: c.Lit.Value()}, nil
+		return LiteralValueDef{Val: UnescapeLiteral(c.Lit.Value(), inString), Expand: true}, nil
 	case c.DollarStmt != nil:
 		return c.DollarStmt.Eval()
 	case c.DollarBrace != nil:
@@ -559,12 +539,6 @@ func (c *StringChunk) Eval() (ValueDef, error) {
 			return nil, err
 		}
 		return ArgValueDef{Number: int(num)}, nil
-	case c.Escaped != nil:
-		r, _, _, err := strconv.UnquoteChar(c.Escaped.Value(), '"')
-		if err != nil {
-			return nil, err
-		}
-		return LiteralValueDef{Val: string(r)}, nil
 	default:
 		panic("bug!")
 	}

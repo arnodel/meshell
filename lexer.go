@@ -106,7 +106,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
 		Name: "lit",
-		Ptn:  `[^\s();&\$|}]+`,
+		Ptn:  `(?:[^\\"\s();&\$|}]|\\.)+`,
 	},
 	//
 	// String
@@ -116,11 +116,6 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Name:    "endquote",
 		Ptn:     `"`,
 		PopMode: true,
-	},
-	{
-		Mode: "str",
-		Name: "escaped",
-		Ptn:  `\.`,
 	},
 	{
 		Mode: "str",
@@ -147,7 +142,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "str",
 		Name: "lit",
-		Ptn:  `[^\\$"]+`,
+		Ptn:  `(?:[^\\$"]|\\.)+`,
 	},
 	//
 	// Parameter
