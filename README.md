@@ -36,4 +36,6 @@ Not sure you want to do that :) Anyway:
 - [x] arg count (`echo $# ${#}`)
 - [ ] status code (`mycommand; echo $?`)
 - [x] PID (`echo $$`)
+- [ ] expressions `[[ x = y ]]`
+- [ ] arithmetic `(( x = y+1 ))`
 - add more to the list
