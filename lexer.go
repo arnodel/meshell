@@ -101,7 +101,7 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	{
 		Mode: "cmd",
 		Name: "kw",
-		Ptn:  `(?:if|then|elif|else|fi|while|do|done)\b`,
+		Ptn:  `(?:if|then|elif|else|fi|while|do|done|function)\b`,
 	},
 	{
 		Mode: "cmd",

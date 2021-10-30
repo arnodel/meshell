@@ -102,11 +102,12 @@ type NextPipeline struct {
 
 type PipelineItem struct {
 	grammar.OneOf
-	IfStmt    *IfStmt
-	WhileStmt *WhileStmt
-	Simple    *SimpleCmd
-	Group     *CmdGroup
-	Subshell  *Subshell
+	Simple       *SimpleCmd
+	Group        *CmdGroup
+	Subshell     *Subshell
+	IfStmt       *IfStmt
+	WhileStmt    *WhileStmt
+	FunctionStmt *FunctionStmt
 }
 
 func (i *PipelineItem) GetCommand() (Command, error) {
@@ -121,6 +122,8 @@ func (i *PipelineItem) GetCommand() (Command, error) {
 		return i.IfStmt.GetCommand()
 	case i.WhileStmt != nil:
 		return i.WhileStmt.GetCommand()
+	case i.FunctionStmt != nil:
+		return i.FunctionStmt.GetCommand()
 	default:
 		panic("bug!")
 	}
@@ -354,6 +357,31 @@ func (s *WhileStmt) GetCommand() (Command, error) {
 	return &WhileCommand{
 		Condition: cond,
 		Body:      body,
+	}, nil
+}
+
+type FunctionStmt struct {
+	grammar.Seq
+	Separator *Token `tok:"spc"`
+	Function  Token  `tok:"kw,function"`
+	Name      Value
+	OpenBkt   Token `tok:"openbkt"`
+	CloseBkt  Token `tok:"closebkt"`
+	Body      PipelineItem
+}
+
+func (s *FunctionStmt) GetCommand() (Command, error) {
+	name, err := s.Name.Eval()
+	if err != nil {
+		return nil, err
+	}
+	body, err := s.Body.GetCommand()
+	if err != nil {
+		return nil, err
+	}
+	return &FunctionCommand{
+		Name: name,
+		Body: body,
 	}, nil
 }
 

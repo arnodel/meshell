@@ -500,6 +500,22 @@ func (c *WhileCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	return &JobSequence{resCh: resCh}, nil
 }
 
+type FunctionCommand struct {
+	Name ValueDef
+	Body Command
+}
+
+var _ Command = (*FunctionCommand)(nil)
+
+func (c *FunctionCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+	name, err := c.Name.Value(sh, std)
+	if err != nil {
+		return nil, err
+	}
+	sh.SetFunction(name, c.Body)
+	return &ImmediateRunningJob{name: "define function"}, nil
+}
+
 //
 // Bultins
 //
