@@ -87,6 +87,9 @@ func (d *SimpleCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) 
 		}
 		args = append(args, chunk...)
 	}
+	if cmd := sh.GetFunction(cmdName); cmd != nil {
+		return CallFunction(sh, std, cmd, append([]string{cmdName}, args...))
+	}
 	if f := builtins[cmdName]; f != nil {
 		return f(sh, std, args)
 	}
@@ -319,7 +322,7 @@ func (d *CommandSequence) StartJob(sh *Shell, std StdStreams) (RunningJob, error
 	go func() {
 		res := left.Wait()
 		var shouldStartSecond bool
-		if !sh.Exited() {
+		if !sh.ShouldStop() {
 			switch d.SeqType {
 			case UncondSeq:
 				shouldStartSecond = true
@@ -477,7 +480,7 @@ func (c *WhileCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	resCh := make(chan JobOutcome)
 	go func() {
 		var res JobOutcome
-		for {
+		for !sh.ShouldStop() {
 			job, err := c.Condition.StartJob(sh, std)
 			if err != nil {
 				res = errorOutcome(err)
@@ -500,20 +503,40 @@ func (c *WhileCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	return &JobSequence{resCh: resCh}, nil
 }
 
-type FunctionCommand struct {
+type FunctionDefCommand struct {
 	Name ValueDef
 	Body Command
 }
 
-var _ Command = (*FunctionCommand)(nil)
+var _ Command = (*FunctionDefCommand)(nil)
 
-func (c *FunctionCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
+func (c *FunctionDefCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) {
 	name, err := c.Name.Value(sh, std)
 	if err != nil {
 		return nil, err
 	}
 	sh.SetFunction(name, c.Body)
 	return &ImmediateRunningJob{name: "define function"}, nil
+}
+
+func CallFunction(sh *Shell, std StdStreams, f Command, args []string) (RunningJob, error) {
+	sh.PushFrame(args)
+	fjob, err := f.StartJob(sh, std)
+	if err != nil {
+		sh.PopFrame()
+		return nil, err
+	}
+	resCh := make(chan JobOutcome)
+	go func() {
+		res := fjob.Wait()
+		code, returned := sh.PopFrame()
+		if returned {
+			resCh <- JobOutcome{ExitCode: code}
+		} else {
+			resCh <- res
+		}
+	}()
+	return &JobSequence{resCh: resCh}, nil
 }
 
 //

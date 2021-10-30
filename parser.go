@@ -379,7 +379,7 @@ func (s *FunctionStmt) GetCommand() (Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FunctionCommand{
+	return &FunctionDefCommand{
 		Name: name,
 		Body: body,
 	}, nil

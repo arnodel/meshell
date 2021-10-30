@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -13,6 +14,14 @@ type Shell struct {
 	exited    bool
 	exitCode  int
 	exported  []string
+	frames    []Frame
+}
+
+type Frame struct {
+	args       []string
+	locals     map[string]string
+	returned   bool
+	returnCode int
 }
 
 func NewShell(args []string) *Shell {
@@ -24,19 +33,89 @@ func NewShell(args []string) *Shell {
 	}
 }
 
+func (s *Shell) currentFrame() *Frame {
+	n := len(s.frames)
+	if n == 0 {
+		return nil
+	}
+	return &s.frames[n-1]
+}
+
+func (s *Shell) PushFrame(args []string) {
+	s.frames = append(s.frames, Frame{args: args})
+}
+
+func (s *Shell) PopFrame() (int, bool) {
+	f := s.currentFrame()
+	if f == nil {
+		panic("no frame to pop")
+	}
+	s.frames = s.frames[:len(s.frames)-1]
+	return f.returnCode, f.returned
+}
+
+func (s *Shell) Return(code int) error {
+	f := s.currentFrame()
+	if f == nil {
+		return errors.New("no function to return from")
+	}
+	f.returnCode = code
+	f.returned = true
+	return nil
+}
+
+func (s *Shell) Returned() bool {
+	f := s.currentFrame()
+	return f != nil && f.returned
+}
+
 func (s *Shell) GetArg(n int) string {
-	if n >= len(s.args) {
+	f := s.currentFrame()
+	var args []string
+	if f != nil {
+		args = f.args
+	} else {
+		args = s.args
+	}
+	if n >= len(args) {
 		return ""
 	}
-	return s.args[n]
+	return args[n]
+}
+
+func (s *Shell) ArgCount() int {
+	f := s.currentFrame()
+	if f != nil {
+		return len(f.args)
+	}
+	return len(s.args)
+}
+
+func (s *Shell) ShiftArgs(n int) {
+	f := s.currentFrame()
+	if f != nil {
+		f.args = f.args[n:]
+	} else {
+		s.args = s.args[n:]
+	}
 }
 
 func (s *Shell) GetVar(name string) string {
-	val, ok := s.globals[name]
-	if ok {
-		return val
+	var (
+		val string
+		ok  bool
+		f   = s.currentFrame()
+	)
+	if f != nil {
+		val, ok = f.locals[name]
 	}
-	return os.Getenv(name)
+	if !ok {
+		val, ok = s.globals[name]
+	}
+	if !ok {
+		val = os.Getenv(name)
+	}
+	return val
 }
 
 func (s *Shell) GetFunction(name string) Command {
@@ -53,6 +132,14 @@ func (s *Shell) Export(name string) {
 }
 
 func (s *Shell) SetVar(name, val string) {
+	f := s.currentFrame()
+	if f != nil {
+		_, ok := f.locals[name]
+		if ok {
+			f.locals[name] = val
+			return
+		}
+	}
 	s.globals[name] = val
 }
 
@@ -71,6 +158,10 @@ func (s *Shell) GetCwd() (string, error) {
 
 func (s *Shell) Exited() bool {
 	return s.exited
+}
+
+func (s *Shell) ShouldStop() bool {
+	return s.Exited() || s.Returned()
 }
 
 func (s *Shell) Exit(code int) {

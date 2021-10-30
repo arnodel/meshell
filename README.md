@@ -11,6 +11,7 @@ Not sure you want to do that :) Anyway:
 ## Features
 - [x] `cd` builtin
 - [x] `exit` builtin
+- [x] `shift` builtin
 - [x] simple commands (`ls -a`)
 - [x] pipelines (`ls | grep foo`)
 - [x] and, or lists (`touch foo || echo ouch`)
@@ -25,7 +26,7 @@ Not sure you want to do that :) Anyway:
 - [ ] general parameter expansion (`echo ${PATH:stuff}`) - that's a rabbit hole
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
-- [ ] functions
+- [x] functions with `return` (`function foo() {echo $2; return; echo $1}; foo hello there `)
 - [x] if then else
 - [x] while loops
 - [ ] for loops
