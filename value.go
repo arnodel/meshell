@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -90,7 +91,7 @@ func (d SpecialVarValueDef) Values(sh *Shell, std StdStreams) ([]string, error) 
 	case '@':
 		return sh.GetArgs(), nil
 	case '$':
-		panic("not implemented")
+		return []string{strconv.Itoa(os.Getpid())}, nil
 	default:
 		panic("bug!")
 	}
@@ -105,7 +106,7 @@ func (d SpecialVarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	case '@':
 		return strings.Join(sh.GetArgs(), " "), nil
 	case '$':
-		panic("not implemented")
+		return strconv.Itoa(os.Getpid()), nil
 	default:
 		panic("bug!")
 	}

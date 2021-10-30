@@ -27,9 +27,13 @@ Not sure you want to do that :) Anyway:
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
 - [x] functions with `return` (`function foo() {echo $2; return; echo $1}; foo hello there `)
-- [x] if then else
-- [x] while loops
+- [x] if then else `if cond; then echo foo; elif cond2; then echo bar; else exit; fi`
+- [x] while loops `while [ $# -gt 0 ]; do echo $1; shift; done`
 - [ ] for loops
 - [ ] export (`export a=10`)
 - [x] arguments (`echo $1 ${2}`)
+- [x] arg list (`echo $@ ${@}`)
+- [x] arg count (`echo $# ${#}`)
+- [ ] status code (`mycommand; echo $?`)
+- [x] PID (`echo $$`)
 - add more to the list
