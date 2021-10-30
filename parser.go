@@ -520,7 +520,7 @@ type StringChunk struct {
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 	EnvVar      *Token `tok:"envvar"`
-	Arg         *Token `tok:"arg"`
+	SpecialVar  *Token `tok:"specialvar"`
 }
 
 func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
@@ -533,12 +533,18 @@ func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
 		return c.DollarBrace.Eval()
 	case c.EnvVar != nil:
 		return VarValueDef{Name: c.EnvVar.Value()[1:]}, nil
-	case c.Arg != nil:
-		num, err := strconv.ParseInt(c.Arg.Value()[1:], 10, 64)
-		if err != nil {
-			return nil, err
+	case c.SpecialVar != nil:
+		val := c.SpecialVar.Value()[1:]
+		switch val[0] {
+		case '?', '#', '@', '$':
+			return SpecialVarValueDef{Name: val[0]}, nil
+		default:
+			num, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			return ArgValueDef{Number: int(num)}, nil
 		}
-		return ArgValueDef{Number: int(num)}, nil
 	default:
 		panic("bug!")
 	}

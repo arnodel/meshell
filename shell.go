@@ -7,6 +7,7 @@ import (
 )
 
 type Shell struct {
+	name      string
 	args      []string
 	globals   map[string]string
 	functions map[string]Command
@@ -18,14 +19,16 @@ type Shell struct {
 }
 
 type Frame struct {
+	name       string
 	args       []string
 	locals     map[string]string
 	returned   bool
 	returnCode int
 }
 
-func NewShell(args []string) *Shell {
+func NewShell(name string, args []string) *Shell {
 	return &Shell{
+		name:      name,
 		args:      args,
 		globals:   map[string]string{},
 		done:      make(chan struct{}),
@@ -41,8 +44,8 @@ func (s *Shell) currentFrame() *Frame {
 	return &s.frames[n-1]
 }
 
-func (s *Shell) PushFrame(args []string) {
-	s.frames = append(s.frames, Frame{args: args})
+func (s *Shell) PushFrame(name string, args []string) {
+	s.frames = append(s.frames, Frame{name: name, args: args})
 }
 
 func (s *Shell) PopFrame() (int, bool) {
@@ -71,7 +74,14 @@ func (s *Shell) Returned() bool {
 
 func (s *Shell) GetArg(n int) string {
 	f := s.currentFrame()
+	if n == 0 {
+		if f != nil {
+			return f.name
+		}
+		return s.name
+	}
 	var args []string
+	n--
 	if f != nil {
 		args = f.args
 	} else {
@@ -89,6 +99,14 @@ func (s *Shell) ArgCount() int {
 		return len(f.args)
 	}
 	return len(s.args)
+}
+
+func (s *Shell) GetArgs() []string {
+	f := s.currentFrame()
+	if f != nil {
+		return f.args
+	}
+	return s.args
 }
 
 func (s *Shell) ShiftArgs(n int) {
@@ -186,7 +204,7 @@ func (s *Shell) Subshell() *Shell {
 	for i, x := range s.args {
 		args[i] = x
 	}
-	sub := NewShell(args)
+	sub := NewShell(s.name, args)
 	for k, v := range s.globals {
 		sub.SetVar(k, v)
 	}

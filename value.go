@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -55,6 +56,40 @@ func (d ArgValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
 
 func (d ArgValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	return sh.GetArg(d.Number), nil
+}
+
+type SpecialVarValueDef struct {
+	Name byte
+}
+
+func (d SpecialVarValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
+	switch d.Name {
+	case '?':
+		panic("not implemented")
+	case '#':
+		return []string{strconv.Itoa(sh.ArgCount())}, nil
+	case '@':
+		return sh.GetArgs(), nil
+	case '$':
+		panic("not implemented")
+	default:
+		panic("bug!")
+	}
+}
+
+func (d SpecialVarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
+	switch d.Name {
+	case '?':
+		panic("not implemented")
+	case '#':
+		return strconv.Itoa(sh.ArgCount()), nil
+	case '@':
+		return strings.Join(sh.GetArgs(), " "), nil
+	case '$':
+		panic("not implemented")
+	default:
+		panic("bug!")
+	}
 }
 
 type CommandValueDef struct {

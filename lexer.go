@@ -35,8 +35,8 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "cmd",
-		Name: "arg",
-		Ptn:  `\$[0-9]+`,
+		Name: "specialvar",
+		Ptn:  `\$(?:[0-9]+|[?#@$])`,
 	},
 	{
 		Mode: "cmd",

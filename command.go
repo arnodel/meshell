@@ -88,7 +88,7 @@ func (d *SimpleCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) 
 		args = append(args, chunk...)
 	}
 	if cmd := sh.GetFunction(cmdName); cmd != nil {
-		return CallFunction(sh, std, cmd, append([]string{cmdName}, args...))
+		return CallFunction(sh, std, cmd, cmdName, args)
 	}
 	if f := builtins[cmdName]; f != nil {
 		return f(sh, std, args)
@@ -519,8 +519,8 @@ func (c *FunctionDefCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, er
 	return &ImmediateRunningJob{name: "define function"}, nil
 }
 
-func CallFunction(sh *Shell, std StdStreams, f Command, args []string) (RunningJob, error) {
-	sh.PushFrame(args)
+func CallFunction(sh *Shell, std StdStreams, f Command, fname string, args []string) (RunningJob, error) {
+	sh.PushFrame(fname, args)
 	fjob, err := f.StartJob(sh, std)
 	if err != nil {
 		sh.PopFrame()

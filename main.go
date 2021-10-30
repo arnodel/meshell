@@ -20,7 +20,7 @@ func main() {
 	defer linr.Close()
 	linr.SetCtrlCAborts(true)
 
-	shell := NewShell(os.Args)
+	shell := NewShell(os.Args[0], nil)
 outerLoop:
 	for {
 		cwd, _ := shell.GetCwd()
