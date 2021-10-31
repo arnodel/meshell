@@ -93,12 +93,12 @@ func (d *SimpleCommand) StartJob(sh *Shell, std StdStreams) (RunningJob, error) 
 	if f := builtins[cmdName]; f != nil {
 		return f(sh, std, args)
 	}
-	cmd := exec.Command(cmdName, args...)
-	dir, err := sh.GetCwd()
+	cmdPath, err := LookPath(sh.GetVar("PATH"), sh.GetCwd(), cmdName)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Dir = dir
+	cmd := exec.Command(cmdPath, args...)
+	cmd.Dir = sh.GetCwd()
 	cmd.Stdin = std.In
 	cmd.Stdout = std.Out
 	cmd.Stderr = std.Err

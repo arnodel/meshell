@@ -20,13 +20,15 @@ Not sure you want to do that :) Anyway:
 - [x] redirect stdin (`cat <foo >bar`)
 - [x] redirect to fd (`./myscript.sh 2>&1 >script_output.txt`)
 - [x] command groups (`{echo "my files"; ls}`)
-- [-] subshells (`(a=12; echo $a)`), buggy as in the same process.
+- [-] subshells (`(a=12; echo $a)`)
 - [x] env variable substitutions (`echo $PATH`)
+- [ ] tilde expansion (`PATH=$PATH:~/bin`) - hard to know what the rule is!
 - [x] simple parameter substitution (`echo ${var}`)
 - [ ] general parameter expansion (`echo ${PATH:stuff}`) - that's a rabbit hole
 - [x] command substitution (`ls $(go env GOROOT)`)
 - [x] shell variables (`a=hello; echo "$a, $a!"`)
 - [x] functions with `return` (`function foo() {echo $2; return; echo $1}; foo hello there `)
+- [ ] local variables
 - [x] if then else `if cond; then echo foo; elif cond2; then echo bar; else exit; fi`
 - [x] while loops `while [ $# -gt 0 ]; do echo $1; shift; done`
 - [ ] for loops

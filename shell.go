@@ -9,6 +9,7 @@ import (
 type Shell struct {
 	name      string
 	args      []string
+	cwd       string
 	globals   map[string]string
 	functions map[string]Command
 	done      chan struct{}
@@ -26,10 +27,11 @@ type Frame struct {
 	returnCode int
 }
 
-func NewShell(name string, args []string) *Shell {
+func NewShell(name string, args []string, cwd string) *Shell {
 	return &Shell{
 		name:      name,
 		args:      args,
+		cwd:       cwd,
 		globals:   map[string]string{},
 		done:      make(chan struct{}),
 		functions: map[string]Command{},
@@ -167,11 +169,16 @@ func (s *Shell) SetFunction(name string, body Command) {
 }
 
 func (s *Shell) SetCwd(dir string) error {
-	return os.Chdir(dir)
+	cwd, err := LookDir(s.cwd, dir)
+	if err != nil {
+		return err
+	}
+	s.cwd = cwd
+	return nil
 }
 
-func (s *Shell) GetCwd() (string, error) {
-	return os.Getwd()
+func (s *Shell) GetCwd() string {
+	return s.cwd
 }
 
 func (s *Shell) Exited() bool {
@@ -204,7 +211,7 @@ func (s *Shell) Subshell() *Shell {
 	for i, x := range s.args {
 		args[i] = x
 	}
-	sub := NewShell(s.name, args)
+	sub := NewShell(s.name, args, s.cwd)
 	for k, v := range s.globals {
 		sub.SetVar(k, v)
 	}

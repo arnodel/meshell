@@ -19,12 +19,11 @@ func main() {
 	linr := liner.NewLiner()
 	defer linr.Close()
 	linr.SetCtrlCAborts(true)
-
-	shell := NewShell(os.Args[0], nil)
+	cwd, _ := os.Getwd()
+	shell := NewShell(os.Args[0], nil, cwd)
 outerLoop:
 	for {
-		cwd, _ := shell.GetCwd()
-		line, err := linr.Prompt(fmt.Sprintf("%s$ ", cwd))
+		line, err := linr.Prompt(fmt.Sprintf("%s$ ", shell.GetCwd()))
 		if err == io.EOF {
 			fmt.Fprintln(os.Stdout, "\nBye!")
 			return
