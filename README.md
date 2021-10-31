@@ -8,6 +8,12 @@ Not sure you want to do that :) Anyway:
 
 `go install github.com/arnodel/meshell`
 
+## Running
+
+`$ meshell` gives you a repl
+
+`$ meshell script.sh` runs a shell script.  You can also do `$ meshell <script.sh`.
+
 ## Features
 - [x] `cd` builtin
 - [x] `exit` builtin
