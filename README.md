@@ -20,7 +20,7 @@ Not sure you want to do that :) Anyway:
 - [x] redirect stdin (`cat <foo >bar`)
 - [x] redirect to fd (`./myscript.sh 2>&1 >script_output.txt`)
 - [x] command groups (`{echo "my files"; ls}`)
-- [-] subshells (`(a=12; echo $a)`)
+- [x] subshells (`(a=12; echo $a)`)
 - [x] env variable substitutions (`echo $PATH`)
 - [ ] tilde expansion (`PATH=$PATH:~/bin`) - hard to know what the rule is! (use `$HOME` for now)
 - [x] simple parameter substitution (`echo ${var}`)
