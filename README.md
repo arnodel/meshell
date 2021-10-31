@@ -22,7 +22,7 @@ Not sure you want to do that :) Anyway:
 - [x] command groups (`{echo "my files"; ls}`)
 - [-] subshells (`(a=12; echo $a)`)
 - [x] env variable substitutions (`echo $PATH`)
-- [ ] tilde expansion (`PATH=$PATH:~/bin`) - hard to know what the rule is!
+- [ ] tilde expansion (`PATH=$PATH:~/bin`) - hard to know what the rule is! (use `$HOME` for now)
 - [x] simple parameter substitution (`echo ${var}`)
 - [ ] general parameter expansion (`echo ${PATH:stuff}`) - that's a rabbit hole
 - [x] command substitution (`ls $(go env GOROOT)`)
