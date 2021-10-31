@@ -40,4 +40,5 @@ Not sure you want to do that :) Anyway:
 - [x] PID (`echo $$`)
 - [ ] expressions `[[ x = y ]]`
 - [ ] arithmetic `(( x = y+1 ))`
+- [ ] comments `echo no comment # Print "no comment"`
 - add more to the list

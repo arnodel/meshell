@@ -8,6 +8,7 @@ import (
 
 type Line struct {
 	grammar.Seq
+	Pfx     *Token `tok:"nl"`
 	CmdList *CmdList
 	EOF     Token `tok:"EOF"`
 }
@@ -40,7 +41,7 @@ func (c *CmdList) GetCommand() (Command, error) {
 type CmdListItem struct {
 	grammar.Seq
 	Cmd CmdLogical
-	Op  Token `tok:"term|closebrace*|closebkt*"`
+	Op  Token `tok:"term|nl|closebrace*|closebkt*|EOF*"`
 }
 
 func (c *CmdListItem) GetCommand() (Command, error) {
@@ -48,15 +49,17 @@ func (c *CmdListItem) GetCommand() (Command, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.Op.Type() == "EOF" {
+		return cmd, nil
+	}
 	switch c.Op.Value()[0] {
 	case '&':
-		cmd = &BackgroundCommand{Cmd: cmd}
+		return &BackgroundCommand{Cmd: cmd}, nil
 	case '\n', ';', '}', ')':
-		// Nothing to do
+		return cmd, nil
 	default:
 		panic("bug!")
 	}
-	return cmd, nil
 }
 
 type CmdLogical struct {

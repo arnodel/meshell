@@ -24,7 +24,12 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		Mode: "cmd",
-		Ptn:  `[;&\n]\s*`,
+		Ptn:  `\n\s*`,
+		Name: "nl",
+	},
+	{
+		Mode: "cmd",
+		Ptn:  `[;&]\s*`,
 		Name: "term",
 	},
 
