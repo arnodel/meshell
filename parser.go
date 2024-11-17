@@ -158,10 +158,9 @@ func (s *Subshell) GetCommand() (Command, error) {
 }
 
 type SimpleCmd struct {
-	grammar.Seq
-	Separator   Token `tok:"spc"`
-	Assignments []Assignment
-	Parts       []CmdPart
+	grammar.Seq `drop:"spc"`
+	Assignments []Assignment `sep:"spc"`
+	Parts       []CmdPart    `sep:"spc"`
 }
 
 func (c *SimpleCmd) sortParts() ([]*Value, []*Redirect) {
@@ -187,10 +186,9 @@ type CmdPart struct {
 }
 
 type Redirect struct {
-	grammar.Seq
-	Op   Token  `tok:"redirect"`
-	Spc  *Token `tok:"spc"`
-	File Value
+	grammar.Seq `drop:"spc"`
+	Op          Token `tok:"redirect"`
+	File        Value
 }
 
 func (c *SimpleCmd) GetCommand() (Command, error) {
@@ -270,9 +268,8 @@ type Assignment struct {
 }
 
 type IfStmt struct {
-	grammar.Seq
-	Separator   *Token `tok:"spc"`
-	If          Token  `tok:"kw,if"`
+	grammar.Seq `drop:"spc|nl"`
+	If          Token `tok:"kw,if"`
 	Condition   CmdList
 	Then        Token `tok:"kw,then"`
 	ThenBody    CmdList
@@ -322,29 +319,26 @@ func (s *IfStmt) GetCommand() (Command, error) {
 }
 
 type ElifClause struct {
-	grammar.Seq
-	Separator *Token `tok:"spc"`
-	Elif      Token  `tok:"kw,elif"`
-	Condition CmdList
-	Then      Token `tok:"kw,then"`
-	ThenBody  CmdList
+	grammar.Seq `drop:"spc|nl"`
+	Elif        Token `tok:"kw,elif"`
+	Condition   CmdList
+	Then        Token `tok:"kw,then"`
+	ThenBody    CmdList
 }
 
 type ElseClause struct {
-	grammar.Seq
-	Separator *Token `tok:"spc"`
-	Else      Token  `tok:"kw,else"`
-	Body      CmdList
+	grammar.Seq `drop:"spc|nl"`
+	Else        Token `tok:"kw,else"`
+	Body        CmdList
 }
 
 type WhileStmt struct {
-	grammar.Seq
-	Separator *Token `tok:"spc"`
-	While     Token  `tok:"kw,while"`
-	Condition CmdList
-	Do        Token `tok:"kw,do"`
-	Body      CmdList
-	Done      Token `tok:"kw,done"`
+	grammar.Seq `drop:"spc|nl"`
+	While       Token `tok:"kw,while"`
+	Condition   CmdList
+	Do          Token `tok:"kw,do"`
+	Body        CmdList
+	Done        Token `tok:"kw,done"`
 }
 
 func (s *WhileStmt) GetCommand() (Command, error) {
@@ -363,13 +357,13 @@ func (s *WhileStmt) GetCommand() (Command, error) {
 }
 
 type FunctionStmt struct {
-	grammar.Seq
-	Separator *Token `tok:"spc"`
-	Function  Token  `tok:"kw,function"`
-	Name      Value
-	OpenBkt   Token `tok:"openbkt"`
-	CloseBkt  Token `tok:"closebkt"`
-	Body      PipelineItem
+	grammar.Seq `drop:"spc"`
+	Function    Token `tok:"kw,function"`
+	Name        Value
+	OpenBkt     Token `tok:"openbkt"`
+	CloseBkt    Token `tok:"closebkt"`
+
+	Body PipelineItem
 }
 
 func (s *FunctionStmt) GetCommand() (Command, error) {
@@ -388,12 +382,11 @@ func (s *FunctionStmt) GetCommand() (Command, error) {
 }
 
 type Pipeline struct {
-	grammar.Seq
-	Separator *Token `tok:"spc"`
-	Start     *grammar.Empty
-	FirstCmd  PipelineItem
-	Pipes     []PipedCmd
-	End       *grammar.Empty
+	grammar.Seq `drop:"spc"`
+	Start       *grammar.Empty
+	FirstCmd    PipelineItem
+	Pipes       []PipedCmd
+	End         *grammar.Empty
 }
 
 func (c *Pipeline) GetCommand() (Command, error) {
