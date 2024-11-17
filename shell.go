@@ -4,19 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 )
 
 type Shell struct {
-	name      string
-	args      []string
-	cwd       string
-	globals   map[string]string
-	functions map[string]Command
-	done      chan struct{}
-	exited    bool
-	exitCode  int
-	exported  []string
-	frames    []Frame
+	name                string
+	args                []string
+	cwd                 string
+	globals             map[string]string
+	functions           map[string]Command
+	done                chan struct{}
+	exited              bool
+	exitCode            int
+	exported            []string
+	frames              []Frame
+	lastCommandExitCode int
 }
 
 type Frame struct {
@@ -72,6 +74,10 @@ func (s *Shell) Return(code int) error {
 func (s *Shell) Returned() bool {
 	f := s.currentFrame()
 	return f != nil && f.returned
+}
+
+func (s *Shell) LastExitCode() int {
+	return s.lastCommandExitCode
 }
 
 func (s *Shell) GetArg(n int) string {
@@ -208,12 +214,30 @@ func (s *Shell) Wait() int {
 
 func (s *Shell) Subshell() *Shell {
 	args := make([]string, len(s.args))
-	for i, x := range s.args {
-		args[i] = x
-	}
+	copy(args, s.args)
 	sub := NewShell(s.name, args, s.cwd)
 	for k, v := range s.globals {
 		sub.SetVar(k, v)
 	}
 	return sub
+}
+
+func (s *Shell) RunCommand(cmd Command, std StdStreams) error {
+	job, err := cmd.StartJob(s, std)
+	if err != nil {
+		return err
+	}
+	c := make(chan os.Signal, 10)
+	signal.Notify(c, os.Interrupt)
+	defer signal.Stop(c)
+	defer close(c)
+	go func() {
+		sig := <-c
+		if sig != nil {
+			job.Signal(sig)
+		}
+	}()
+	res := job.Wait()
+	s.lastCommandExitCode = res.ExitCode
+	return res.Err
 }

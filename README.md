@@ -42,7 +42,7 @@ Not sure you want to do that :) Anyway:
 - [x] arguments (`echo $1 ${2}`)
 - [x] arg list (`echo $@ ${@}`)
 - [x] arg count (`echo $# ${#}`)
-- [ ] status code (`mycommand; echo $?`)
+- [x] status code (`mycommand; echo $?`)
 - [x] PID (`echo $$`)
 - [ ] expressions `[[ x = y ]]`
 - [ ] arithmetic `(( x = y+1 ))`

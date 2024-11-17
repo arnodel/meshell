@@ -19,6 +19,8 @@ type LiteralValueDef struct {
 	Expand bool
 }
 
+var _ ValueDef = LiteralValueDef{}
+
 func (d LiteralValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
 	if d.Expand {
 		exp, err := filepath.Glob(d.Val)
@@ -85,7 +87,7 @@ type SpecialVarValueDef struct {
 func (d SpecialVarValueDef) Values(sh *Shell, std StdStreams) ([]string, error) {
 	switch d.Name {
 	case '?':
-		panic("not implemented")
+		return []string{strconv.Itoa(sh.LastExitCode())}, nil
 	case '#':
 		return []string{strconv.Itoa(sh.ArgCount())}, nil
 	case '@':
@@ -100,7 +102,7 @@ func (d SpecialVarValueDef) Values(sh *Shell, std StdStreams) ([]string, error) 
 func (d SpecialVarValueDef) Value(sh *Shell, std StdStreams) (string, error) {
 	switch d.Name {
 	case '?':
-		panic("not implemented")
+		return strconv.Itoa(sh.LastExitCode()), nil
 	case '#':
 		return strconv.Itoa(sh.ArgCount()), nil
 	case '@':

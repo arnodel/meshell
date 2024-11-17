@@ -20,6 +20,7 @@ type Command interface {
 
 type RunningJob interface {
 	Wait() JobOutcome
+	Signal(os.Signal)
 	String() string
 }
 
@@ -124,6 +125,10 @@ func (j *ExecJob) Wait() JobOutcome {
 	return JobOutcome{
 		ExitCode: j.cmd.ProcessState.ExitCode(),
 	}
+}
+
+func (j *ExecJob) Signal(sig os.Signal) {
+	j.cmd.Process.Signal(sig)
 }
 
 func (j *ExecJob) String() string {
@@ -234,6 +239,10 @@ func (c *RedirectJob) Wait() JobOutcome {
 	return c.job.Wait()
 }
 
+func (c *RedirectJob) Signal(sig os.Signal) {
+	c.job.Signal(sig)
+}
+
 func (c *RedirectJob) String() string {
 	return c.job.String()
 }
@@ -288,6 +297,11 @@ func (p *PipelineJob) Wait() JobOutcome {
 
 	_ = r2 // TODO: handle this error (ala bash set -o pipefail)
 	return r1
+}
+
+func (p *PipelineJob) Signal(sig os.Signal) {
+	p.left.Signal(sig)
+	p.right.Signal(sig)
 }
 
 func (p *PipelineJob) String() string {
@@ -358,6 +372,10 @@ func (s *JobSequence) Wait() JobOutcome {
 	return <-s.resCh
 }
 
+func (s *JobSequence) Signal(sig os.Signal) {
+	// TODO
+}
+
 func (s *JobSequence) String() string {
 	return "seqcmd"
 }
@@ -393,6 +411,10 @@ var _ RunningJob = (*BackgroundJob)(nil)
 
 func (c *BackgroundJob) Wait() JobOutcome {
 	return JobOutcome{}
+}
+
+func (c *BackgroundJob) Signal(sig os.Signal) {
+	c.job.Signal(sig)
 }
 
 func (c *BackgroundJob) String() string {
@@ -431,6 +453,10 @@ var _ RunningJob = &SubshellJob{}
 
 func (c *SubshellJob) Wait() JobOutcome {
 	return JobOutcome{ExitCode: c.subshell.Wait()}
+}
+
+func (c *SubshellJob) Signal(sig os.Signal) {
+	// TODO
 }
 
 func (c *SubshellJob) String() string {
@@ -552,6 +578,10 @@ var _ RunningJob = &ImmediateRunningJob{}
 
 func (b *ImmediateRunningJob) Wait() JobOutcome {
 	return b.outcome
+}
+
+func (b *ImmediateRunningJob) Signal(sig os.Signal) {
+	// TODO
 }
 
 func (b *ImmediateRunningJob) String() string {
