@@ -59,7 +59,7 @@ func TestParseShapes(t *testing.T) {
 	if simple == nil {
 		t.Fatal("not a simple command")
 	}
-	if len(simple.Assignments) != 1 || simple.Assignments[0].Name != "FOO" {
+	if len(simple.Assignments) != 1 || simple.Assignments[0].Word.Value() != "FOO=bar" {
 		t.Errorf("assignments: %+v", simple.Assignments)
 	}
 	vals, redirects := simple.sortParts()
@@ -78,11 +78,11 @@ func TestParseShapes(t *testing.T) {
 	if len(simple.Assignments) != 2 {
 		t.Fatalf("got %d assignments, want 2", len(simple.Assignments))
 	}
-	if a := simple.Assignments[0]; a.Name != "FOO" || len(a.Value.Components) != 3 {
-		t.Errorf("first assignment: %s with %d components", a.Name, len(a.Value.Components))
+	if name, val, err := simple.Assignments[0].Eval(); err != nil || name != "FOO" || len(val.(CompositeValueDef).Parts) != 3 {
+		t.Errorf("first assignment: %s = %#v, %v", name, val, err)
 	}
-	if a := simple.Assignments[1]; a.Name != "FOO" || len(a.Value.Components) != 0 {
-		t.Errorf("second assignment: %s with %d components", a.Name, len(a.Value.Components))
+	if name, val, err := simple.Assignments[1].Eval(); err != nil || name != "FOO" || val != nil {
+		t.Errorf("second assignment: %s = %#v, %v", name, val, err)
 	}
 	line = parseLine(t, "a | b && c || d; e\n")
 	if n := len(line.CmdList.Rest); n != 1 {

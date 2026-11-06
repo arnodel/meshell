@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"regexp"
 	"strings"
 
 	"github.com/arnodel/grammar"
@@ -207,12 +205,12 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	}
 	env := make([]AssignDef, len(c.Assignments))
 	for i, a := range c.Assignments {
-		val, err := a.Value.Eval()
+		name, val, err := a.Eval()
 		if err != nil {
 			return nil, err
 		}
 		env[i] = AssignDef{
-			Name: a.Name,
+			Name: name,
 			Val:  val,
 		}
 	}
@@ -265,51 +263,36 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	return cmd, nil
 }
 
-// An Assignment is a word of the form NAME=value at the start of a simple
-// command.  Whether a word is an assignment depends on where it is ("echo
-// a=b" passes an argument), so the tokeniser does not decide: the word is a
-// "lit" token like any other, and this rule, used only where assignments can
-// be, recognises it.  The rest of the word after "=" is the first chunk of
-// the value; quoted or expanded chunks may follow without a space.
+// Assignment ::= assign Value: a word NAME=..., which holds the start of the
+// value, followed by any quoted or expanded chunks stuck to it (FOO=ba"r"$x).
+// An assignment-shaped word is only an assignment here, at the start of a
+// simple command; elsewhere it is a plain word (see StringChunk).
 type Assignment struct {
-	Name  string
-	Value Value
+	grammar.Seq
+	Word Token  `tok:"assign"`
+	Rest *Value // usually nothing: the word holds the whole value
 }
 
-var (
-	assignPtn        = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_-]*=`)
-	litOpts          = grammar.TokenOptionsFromTag("lit")
-	errNotAssignment = errors.New("not an assignment")
-)
-
-func (a *Assignment) Parse(_ any, s *grammar.ParserState, _ grammar.TokenOptions) *grammar.ParseError {
-	pos := s.Save()
-	tok, err := litOpts.MatchNextToken(s)
-	if err != nil {
-		return err
+// Eval returns the name assigned to and the value.
+func (a *Assignment) Eval() (string, ValueDef, error) {
+	name, first, _ := strings.Cut(a.Word.Value(), "=")
+	var parts []ValueDef
+	if first != "" {
+		parts = append(parts, LiteralValueDef{Val: UnescapeLiteral(first, false), Expand: true})
 	}
-	word := tok.Value()
-	m := assignPtn.FindString(word)
-	if m == "" {
-		return s.Fail(pos, tok, errNotAssignment)
-	}
-	a.Name = m[:len(m)-1]
-	if rest := word[len(m):]; rest != "" {
-		tokPos := tok.Position()
-		tokPos.Column += len(m)
-		a.Value.Components = append(a.Value.Components, SingleValue{
-			StringChunk: &StringChunk{Lit: &Token{TokType: "lit", TokValue: rest, TokPos: tokPos}},
-		})
-	}
-	for {
-		start := s.Save()
-		var component SingleValue
-		if grammar.ParseWithOptions(&component, s, grammar.TokenOptions{}) != nil {
-			s.Restore(start)
-			return nil
+	if a.Rest != nil {
+		for _, c := range a.Rest.Components {
+			v, err := c.Eval()
+			if err != nil {
+				return "", nil, err
+			}
+			parts = append(parts, v)
 		}
-		a.Value.Components = append(a.Value.Components, component)
 	}
+	if len(parts) == 1 {
+		return name, parts[0], nil
+	}
+	return name, CompositeValueDef{Parts: parts}, nil
 }
 
 type IfStmt struct {
@@ -543,9 +526,11 @@ func (s *String) Eval() (ValueDef, error) {
 	return CompositeValueDef{Parts: parts}, nil
 }
 
+// A StringChunk is a piece of a value.  A word shaped like an assignment is
+// a plain word here: "echo a=b" passes an argument.
 type StringChunk struct {
 	grammar.OneOf
-	Lit         *Token `tok:"lit"`
+	Lit         *Token `tok:"lit|assign"`
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 	Param       *Token `tok:"envvar|specialvar"`
