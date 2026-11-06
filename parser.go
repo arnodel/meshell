@@ -281,17 +281,8 @@ func (a *Assignment) Eval() (string, ValueDef, error) {
 	if first != "" {
 		parts = append(parts, LiteralValueDef{Val: UnescapeLiteral(first, false), Expand: true})
 	}
-	for _, c := range a.Components {
-		v, err := c.Eval()
-		if err != nil {
-			return "", nil, err
-		}
-		parts = append(parts, v)
-	}
-	if len(parts) == 1 {
-		return name, parts[0], nil
-	}
-	return name, CompositeValueDef{Parts: parts}, nil // empty for FOO=, as before
+	val, err := evalComponents(parts, a.Components)
+	return name, val, err
 }
 
 type IfStmt struct {
@@ -443,18 +434,23 @@ type Value struct {
 }
 
 func (v *Value) Eval() (ValueDef, error) {
-	if len(v.Components) == 1 {
-		return v.Components[0].Eval()
-	}
-	components := make([]ValueDef, len(v.Components))
-	for i, c := range v.Components {
+	return evalComponents(nil, v.Components)
+}
+
+// evalComponents evaluates the components of a value after the parts already
+// known: a single part is the value, otherwise the value is composite.
+func evalComponents(parts []ValueDef, components []SingleValue) (ValueDef, error) {
+	for _, c := range components {
 		v, err := c.Eval()
 		if err != nil {
 			return nil, err
 		}
-		components[i] = v
+		parts = append(parts, v)
 	}
-	return CompositeValueDef{Parts: components}, nil
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	return CompositeValueDef{Parts: parts}, nil
 }
 
 type SingleValue struct {
