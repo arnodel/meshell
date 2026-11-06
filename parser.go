@@ -157,10 +157,12 @@ func (s *Subshell) GetCommand() (Command, error) {
 	return &SubshellCommand{Body: body}, nil
 }
 
+// SimpleCmd ::= Assignment* CmdPart*, the parts separated by spaces, which
+// the rule drops (so they cannot also be separators).
 type SimpleCmd struct {
 	grammar.Seq `drop:"spc"`
-	Assignments []Assignment `sep:"spc"`
-	Parts       []CmdPart    `sep:"spc"`
+	Assignments []Assignment
+	Parts       []CmdPart
 }
 
 func (c *SimpleCmd) sortParts() ([]*Value, []*Redirect) {

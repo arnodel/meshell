@@ -146,7 +146,7 @@ outerLoop:
 					os.Exit(shell.Wait())
 				}
 				continue outerLoop
-			} else if parseErr.Token == grammar.EOF {
+			} else if parseErr.Token.Type() == grammar.EOF.TokType {
 				more, err := linr.Prompt("> ")
 				if err == io.EOF {
 					return 0
