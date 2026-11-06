@@ -263,14 +263,15 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	return cmd, nil
 }
 
-// Assignment ::= assign Value: a word NAME=..., which holds the start of the
-// value, followed by any quoted or expanded chunks stuck to it (FOO=ba"r"$x).
-// An assignment-shaped word is only an assignment here, at the start of a
-// simple command; elsewhere it is a plain word (see StringChunk).
+// Assignment ::= assign SingleValue*: a word NAME=..., which holds the start
+// of the value, followed by any quoted or expanded components stuck to it
+// (FOO=ba"r"$x), as in Value.  An assignment-shaped word is only an
+// assignment here, at the start of a simple command; elsewhere it is a plain
+// word (see StringChunk).
 type Assignment struct {
 	grammar.Seq
-	Word         Token  `tok:"assign"`
-	Continuation *Value // quoted or expanded chunks stuck to the word, if any
+	Word       Token `tok:"assign"`
+	Components []SingleValue
 }
 
 // Eval returns the name assigned to and the value.
@@ -280,14 +281,12 @@ func (a *Assignment) Eval() (string, ValueDef, error) {
 	if first != "" {
 		parts = append(parts, LiteralValueDef{Val: UnescapeLiteral(first, false), Expand: true})
 	}
-	if a.Continuation != nil {
-		for _, c := range a.Continuation.Components {
-			v, err := c.Eval()
-			if err != nil {
-				return "", nil, err
-			}
-			parts = append(parts, v)
+	for _, c := range a.Components {
+		v, err := c.Eval()
+		if err != nil {
+			return "", nil, err
 		}
+		parts = append(parts, v)
 	}
 	if len(parts) == 1 {
 		return name, parts[0], nil
