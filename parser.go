@@ -292,7 +292,7 @@ func (a *Assignment) Eval() (string, ValueDef, error) {
 	if len(parts) == 1 {
 		return name, parts[0], nil
 	}
-	return name, CompositeValueDef{Parts: parts}, nil
+	return name, CompositeValueDef{Parts: parts}, nil // empty for FOO=, as before
 }
 
 type IfStmt struct {

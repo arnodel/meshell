@@ -81,7 +81,7 @@ func TestParseShapes(t *testing.T) {
 	if name, val, err := simple.Assignments[0].Eval(); err != nil || name != "FOO" || len(val.(CompositeValueDef).Parts) != 3 {
 		t.Errorf("first assignment: %s = %#v, %v", name, val, err)
 	}
-	if name, val, err := simple.Assignments[1].Eval(); err != nil || name != "FOO" || val != nil {
+	if name, val, err := simple.Assignments[1].Eval(); err != nil || name != "FOO" || len(val.(CompositeValueDef).Parts) != 0 {
 		t.Errorf("second assignment: %s = %#v, %v", name, val, err)
 	}
 	line = parseLine(t, "a | b && c || d; e\n")
