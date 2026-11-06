@@ -269,8 +269,8 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 // simple command; elsewhere it is a plain word (see StringChunk).
 type Assignment struct {
 	grammar.Seq
-	Word Token  `tok:"assign"`
-	Rest *Value // usually nothing: the word holds the whole value
+	Word         Token  `tok:"assign"`
+	Continuation *Value // quoted or expanded chunks stuck to the word, if any
 }
 
 // Eval returns the name assigned to and the value.
@@ -280,8 +280,8 @@ func (a *Assignment) Eval() (string, ValueDef, error) {
 	if first != "" {
 		parts = append(parts, LiteralValueDef{Val: UnescapeLiteral(first, false), Expand: true})
 	}
-	if a.Rest != nil {
-		for _, c := range a.Rest.Components {
+	if a.Continuation != nil {
+		for _, c := range a.Continuation.Components {
 			v, err := c.Eval()
 			if err != nil {
 				return "", nil, err
