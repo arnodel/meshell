@@ -35,6 +35,8 @@ func TestParseLines(t *testing.T) {
 		"function f() { echo $1 ${2} $(date) \"a $x b\"; }\n",
 		"echo 'single quoted' \"double $HOME\" plain$var\n",
 		"echo a=b c==d\n", // assignment-like words are arguments after the command name
+		"FOO= cmd\n",
+		"FOO=ba\"r\"$x cmd\n",
 		"\n",
 		"",
 	} {
@@ -57,7 +59,7 @@ func TestParseShapes(t *testing.T) {
 	if simple == nil {
 		t.Fatal("not a simple command")
 	}
-	if len(simple.Assignments) != 1 || simple.Assignments[0].Dest.Value() != "FOO=" {
+	if len(simple.Assignments) != 1 || simple.Assignments[0].Name != "FOO" {
 		t.Errorf("assignments: %+v", simple.Assignments)
 	}
 	vals, redirects := simple.sortParts()
@@ -68,8 +70,19 @@ func TestParseShapes(t *testing.T) {
 	simple = line.CmdList.First.Cmd.First.FirstCmd.Simple
 	if vals, _ := simple.sortParts(); len(simple.Assignments) != 0 || len(vals) != 2 {
 		t.Errorf("echo a=b: %d assignments, %d values", len(simple.Assignments), len(vals))
-	} else if def, err := vals[1].Eval(); err != nil || def.(CompositeValueDef).Parts[0].(LiteralValueDef).Val != "a=" {
+	} else if def, err := vals[1].Eval(); err != nil || def.(LiteralValueDef).Val != "a=b" {
 		t.Errorf("echo a=b: argument evaluates to %#v, %v", def, err)
+	}
+	line = parseLine(t, "FOO=ba\"r\"$x FOO= cmd\n")
+	simple = line.CmdList.First.Cmd.First.FirstCmd.Simple
+	if len(simple.Assignments) != 2 {
+		t.Fatalf("got %d assignments, want 2", len(simple.Assignments))
+	}
+	if a := simple.Assignments[0]; a.Name != "FOO" || len(a.Value.Components) != 3 {
+		t.Errorf("first assignment: %s with %d components", a.Name, len(a.Value.Components))
+	}
+	if a := simple.Assignments[1]; a.Name != "FOO" || len(a.Value.Components) != 0 {
+		t.Errorf("second assignment: %s with %d components", a.Name, len(a.Value.Components))
 	}
 	line = parseLine(t, "a | b && c || d; e\n")
 	if n := len(line.CmdList.Rest); n != 1 {

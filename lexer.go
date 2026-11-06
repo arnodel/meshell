@@ -1,10 +1,6 @@
 package main
 
-import (
-	"regexp"
-
-	"github.com/arnodel/grammar"
-)
+import "github.com/arnodel/grammar"
 
 type Token = grammar.SimpleToken
 
@@ -46,11 +42,6 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Mode: "cmd",
 		Name: "specialvar",
 		Ptn:  `\$(?:[0-9]+|[?#@$])`,
-	},
-	{
-		Mode: "cmd",
-		Name: "assign",
-		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*=`,
 	},
 	{
 		Mode:     "cmd",
@@ -114,12 +105,10 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 	},
 	{
 		// The tokeniser takes the longest match, so a literal must not be
-		// able to swallow a redirection ("2>file") or an assignment
-		// ("FOO=bar"), which are shorter.
+		// able to swallow a redirection ("2>file"), which is shorter.
 		Mode: "cmd",
 		Name: "lit",
 		Ptn:  `(?:[^\\"\s();&\$|}<>]|\\.)+`,
-		Scan: scanLit,
 	},
 	//
 	// String
@@ -182,17 +171,3 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Ptn:  `[?#@$]`,
 	},
 })
-
-var (
-	litPtn    = regexp.MustCompile(`^(?:[^\\"\s();&\$|}<>]|\\.)+`)
-	assignPtn = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_-]*=`)
-)
-
-// scanLit is the length of a "lit" token at the start of s, or 0 if s starts
-// with an assignment.
-func scanLit(s string) int {
-	if assignPtn.MatchString(s) {
-		return 0
-	}
-	return len(litPtn.FindString(s))
-}
