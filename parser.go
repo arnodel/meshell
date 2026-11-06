@@ -157,10 +157,12 @@ func (s *Subshell) GetCommand() (Command, error) {
 	return &SubshellCommand{Body: body}, nil
 }
 
+// SimpleCmd ::= Assignment* CmdPart*, the parts separated by spaces, which
+// the rule drops (so they cannot also be separators).
 type SimpleCmd struct {
 	grammar.Seq `drop:"spc"`
-	Assignments []Assignment `sep:"spc"`
-	Parts       []CmdPart    `sep:"spc"`
+	Assignments []Assignment
+	Parts       []CmdPart
 }
 
 func (c *SimpleCmd) sortParts() ([]*Value, []*Redirect) {
@@ -203,12 +205,12 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	}
 	env := make([]AssignDef, len(c.Assignments))
 	for i, a := range c.Assignments {
-		val, err := a.Value.Eval()
+		name, val, err := a.Eval()
 		if err != nil {
 			return nil, err
 		}
 		env[i] = AssignDef{
-			Name: getAssignDest(a.Dest.Value()),
+			Name: name,
 			Val:  val,
 		}
 	}
@@ -261,10 +263,26 @@ func (c *SimpleCmd) GetCommand() (Command, error) {
 	return cmd, nil
 }
 
+// Assignment ::= assign SingleValue*: a word NAME=..., which holds the start
+// of the value, followed by any quoted or expanded components stuck to it
+// (FOO=ba"r"$x), as in Value.  An assignment-shaped word is only an
+// assignment here, at the start of a simple command; elsewhere it is a plain
+// word (see StringChunk).
 type Assignment struct {
 	grammar.Seq
-	Dest  Token `tok:"assign"`
-	Value Value
+	Word       Token `tok:"assign"`
+	Components []SingleValue
+}
+
+// Eval returns the name assigned to and the value.
+func (a *Assignment) Eval() (string, ValueDef, error) {
+	name, first, _ := strings.Cut(a.Word.Value(), "=")
+	var parts []ValueDef
+	if first != "" {
+		parts = append(parts, LiteralValueDef{Val: UnescapeLiteral(first, false), Expand: true})
+	}
+	val, err := evalComponents(parts, a.Components)
+	return name, val, err
 }
 
 type IfStmt struct {
@@ -416,18 +434,23 @@ type Value struct {
 }
 
 func (v *Value) Eval() (ValueDef, error) {
-	if len(v.Components) == 1 {
-		return v.Components[0].Eval()
-	}
-	components := make([]ValueDef, len(v.Components))
-	for i, c := range v.Components {
+	return evalComponents(nil, v.Components)
+}
+
+// evalComponents evaluates the components of a value after the parts already
+// known: a single part is the value, otherwise the value is composite.
+func evalComponents(parts []ValueDef, components []SingleValue) (ValueDef, error) {
+	for _, c := range components {
 		v, err := c.Eval()
 		if err != nil {
 			return nil, err
 		}
-		components[i] = v
+		parts = append(parts, v)
 	}
-	return CompositeValueDef{Parts: components}, nil
+	if len(parts) == 1 {
+		return parts[0], nil
+	}
+	return CompositeValueDef{Parts: parts}, nil
 }
 
 type SingleValue struct {
@@ -498,9 +521,11 @@ func (s *String) Eval() (ValueDef, error) {
 	return CompositeValueDef{Parts: parts}, nil
 }
 
+// A StringChunk is a piece of a value.  A word shaped like an assignment is
+// a plain word here: "echo a=b" passes an argument.
 type StringChunk struct {
 	grammar.OneOf
-	Lit         *Token `tok:"lit"`
+	Lit         *Token `tok:"lit|assign"`
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 	Param       *Token `tok:"envvar|specialvar"`
@@ -519,10 +544,6 @@ func (c *StringChunk) Eval(inString bool) (ValueDef, error) {
 	default:
 		panic("bug!")
 	}
-}
-
-func getAssignDest(s string) string {
-	return s[:len(s)-1]
 }
 
 func splitRedirect(op string) (string, int, bool) {

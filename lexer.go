@@ -44,11 +44,6 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Ptn:  `\$(?:[0-9]+|[?#@$])`,
 	},
 	{
-		Mode: "cmd",
-		Name: "assign",
-		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*=`,
-	},
-	{
 		Mode:     "cmd",
 		Name:     "dollarbkt",
 		Ptn:      `\$\(\s*`,
@@ -109,9 +104,21 @@ var tokeniseCommand = grammar.SimpleTokeniser([]grammar.TokenDef{
 		Ptn:  `(?:if|then|elif|else|fi|while|do|done|function)\b`,
 	},
 	{
+		// A word shaped like an assignment, NAME=..., up to the end of the
+		// word so that it is as long as the literal it would otherwise be
+		// (the tokeniser takes the longest match, and the first definition
+		// among equals).  Whether it is an assignment depends on where it
+		// is: the grammar decides.
+		Mode: "cmd",
+		Name: "assign",
+		Ptn:  `[a-zA-Z_][a-zA-Z0-9_-]*=(?:[^\\"\s();&\$|}<>]|\\.)*`,
+	},
+	{
+		// A literal must not be able to swallow a redirection ("2>file"),
+		// which is shorter.
 		Mode: "cmd",
 		Name: "lit",
-		Ptn:  `(?:[^\\"\s();&\$|}]|\\.)+`,
+		Ptn:  `(?:[^\\"\s();&\$|}<>]|\\.)+`,
 	},
 	//
 	// String

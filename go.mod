@@ -1,9 +1,9 @@
 module github.com/arnodel/meshell
 
-go 1.17
+go 1.23
 
 require (
-	github.com/arnodel/grammar v0.1.0
+	github.com/arnodel/grammar v0.2.0
 	github.com/peterh/liner v1.2.2
 )
 
