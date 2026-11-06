@@ -500,9 +500,12 @@ func (s *String) Eval() (ValueDef, error) {
 	return CompositeValueDef{Parts: parts}, nil
 }
 
+// A StringChunk is a piece of a value.  An "assign" token is a literal here:
+// "a=b" is an assignment only before the command name, where SimpleCmd has
+// already taken it.
 type StringChunk struct {
 	grammar.OneOf
-	Lit         *Token `tok:"lit"`
+	Lit         *Token `tok:"lit|assign"`
 	DollarStmt  *DollarStmt
 	DollarBrace *DollarBrace
 	Param       *Token `tok:"envvar|specialvar"`

@@ -34,6 +34,7 @@ func TestParseLines(t *testing.T) {
 		"while read l; do echo \"$l\"; done\n",
 		"function f() { echo $1 ${2} $(date) \"a $x b\"; }\n",
 		"echo 'single quoted' \"double $HOME\" plain$var\n",
+		"echo a=b c==d\n", // assignment-like words are arguments after the command name
 		"\n",
 		"",
 	} {
@@ -62,6 +63,13 @@ func TestParseShapes(t *testing.T) {
 	vals, redirects := simple.sortParts()
 	if len(vals) != 3 || len(redirects) != 1 {
 		t.Errorf("got %d values and %d redirects", len(vals), len(redirects))
+	}
+	line = parseLine(t, "echo a=b\n")
+	simple = line.CmdList.First.Cmd.First.FirstCmd.Simple
+	if vals, _ := simple.sortParts(); len(simple.Assignments) != 0 || len(vals) != 2 {
+		t.Errorf("echo a=b: %d assignments, %d values", len(simple.Assignments), len(vals))
+	} else if def, err := vals[1].Eval(); err != nil || def.(CompositeValueDef).Parts[0].(LiteralValueDef).Val != "a=" {
+		t.Errorf("echo a=b: argument evaluates to %#v, %v", def, err)
 	}
 	line = parseLine(t, "a | b && c || d; e\n")
 	if n := len(line.CmdList.Rest); n != 1 {
